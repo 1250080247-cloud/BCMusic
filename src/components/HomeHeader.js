@@ -2,7 +2,6 @@
 
 import Image from 'next/image';
 import CategoryScroller from '@/components/CategoryScroller';
-import SearchBar from '@/components/SearchBar';
 import SettingsPanel from '@/components/SettingsPanel';
 import { getDictionary } from '@/lib/i18n';
 import { useSettingsStore } from '@/lib/store';
@@ -33,8 +32,6 @@ export default function HomeHeader({ categories, currentQuery, currentSearch }) 
             </div>
           </div>
         </div>
-
-        <SearchBar currentSearch={currentSearch} />
 
         {!currentSearch && (
           <CategoryScroller categories={categories} currentQuery={currentQuery} />

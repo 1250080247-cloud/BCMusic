@@ -100,6 +100,8 @@ export const dictionaries = {
       home: 'Trang chủ',
       library: 'Thư viện',
       playlist: 'Playlist',
+      search: 'Tìm kiếm',
+      close: 'Đóng',
     },
     playlist: {
       title: 'Danh sách phát',
@@ -223,6 +225,8 @@ export const dictionaries = {
       home: 'Home',
       library: 'Library',
       playlist: 'Playlist',
+      search: 'Search',
+      close: 'Close',
     },
     playlist: {
       title: 'Playlists',

@@ -7,6 +7,11 @@ import Player from "@/components/Player";
 import RankingSection from "@/components/RankingSection";
 import SongCard from "@/components/SongCard";
 import SongModal from "@/components/SongModal";
+import { getYouTubeSongs } from "@/lib/youtube";
+
+// ISR: Next.js sẽ tái tạo trang tối đa mỗi 30 phút
+// Kết hợp với MongoDB cache (1 giờ), trang sẽ load cực nhanh
+export const revalidate = 1800;
 
 const categories = [
   { key: "tiktokRemix", query: "tiktok remix ncs" },
@@ -20,43 +25,6 @@ const categories = [
   { key: "piano", query: "piano instrumental relaxing" },
   { key: "popHits", query: "pop hits 2024 2025" },
 ];
-
-async function getYouTubeSongs(searchQuery, pageToken = "", order = "relevance", maxResults = 5) {
-  const API_KEY = process.env.YOUTUBE_API_KEY;
-  if (!API_KEY) return { items: [], nextPageToken: null, prevPageToken: null };
-
-  const tokenParam = pageToken ? `&pageToken=${pageToken}` : "";
-  const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=${maxResults}&q=${encodeURIComponent(searchQuery)}&type=video&order=${order}&key=${API_KEY}${tokenParam}`;
-
-  try {
-    const res = await fetch(url, { cache: "no-store" });
-    const data = await res.json();
-
-    if (!res.ok) {
-      console.error("YouTube API Error:", data.error?.message);
-      return { items: [], nextPageToken: null, prevPageToken: null };
-    }
-
-    const formattedItems = (data.items || [])
-      .filter((item) => item.id?.videoId)
-      .map((item) => ({
-        id: item.id.videoId,
-        title: item.snippet.title,
-        artist: item.snippet.channelTitle,
-        thumbnail: item.snippet.thumbnails.high?.url || item.snippet.thumbnails.medium?.url,
-        publishedAt: item.snippet.publishedAt,
-      }));
-
-    return {
-      items: formattedItems,
-      nextPageToken: data.nextPageToken || null,
-      prevPageToken: data.prevPageToken || null,
-    };
-  } catch (error) {
-    console.error("Fetch Error:", error);
-    return { items: [], nextPageToken: null, prevPageToken: null };
-  }
-}
 
 export default async function Home({ searchParams }) {
   const resolvedParams = await searchParams;

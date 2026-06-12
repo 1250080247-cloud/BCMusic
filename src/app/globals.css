@@ -396,6 +396,14 @@ select {
 
 /* ── Bottom Navigation ── */
 
+.nav-search-panel {
+  background: var(--surface-strong);
+  border: 1px solid var(--border-strong);
+  border-radius: 1.25rem;
+  backdrop-filter: blur(22px);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
+}
+
 .bottom-nav {
   background: var(--player-bg);
   border-top: 1px solid var(--border);
@@ -422,4 +430,27 @@ select {
 
 .bottom-nav-item.is-active {
   color: var(--app-text);
+}
+
+/* ── Skeleton Loading ── */
+
+.skeleton-pulse {
+  background: linear-gradient(
+    90deg,
+    var(--surface) 0%,
+    var(--surface-hover) 40%,
+    var(--surface) 80%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.6s ease-in-out infinite;
+  border-radius: 0.75rem;
+}
+
+@keyframes skeleton-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
 }
