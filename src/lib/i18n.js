@@ -284,3 +284,28 @@ export function formatDateTime(value, language = 'vi') {
     return getDictionary(language).common.unknownDate;
   }
 }
+
+export function formatViewCount(count, language = 'vi') {
+  if (!count) return null;
+  const n = Number(count);
+  if (Number.isNaN(n)) return null;
+
+  const suffix = language === 'vi'
+    ? { B: 'B', M: 'Tr', K: 'N' }
+    : { B: 'B', M: 'M', K: 'K' };
+  const viewLabel = language === 'vi' ? 'lượt xem' : 'views';
+
+  let formatted;
+  if (n >= 1_000_000_000) {
+    formatted = `${(n / 1_000_000_000).toFixed(1).replace(/\.0$/, '')}${suffix.B}`;
+  } else if (n >= 1_000_000) {
+    formatted = `${(n / 1_000_000).toFixed(1).replace(/\.0$/, '')}${suffix.M}`;
+  } else if (n >= 1_000) {
+    formatted = `${(n / 1_000).toFixed(1).replace(/\.0$/, '')}${suffix.K}`;
+  } else {
+    formatted = n.toString();
+  }
+
+  return `${formatted} ${viewLabel}`;
+}
+

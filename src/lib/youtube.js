@@ -30,15 +30,34 @@ async function fetchFromYouTube(searchQuery, pageToken = '', order = 'relevance'
       return { items: [], nextPageToken: null, prevPageToken: null };
     }
 
-    const formattedItems = (data.items || [])
-      .filter((item) => item.id?.videoId)
-      .map((item) => ({
-        id: item.id.videoId,
-        title: item.snippet.title,
-        artist: item.snippet.channelTitle,
-        thumbnail: item.snippet.thumbnails.high?.url || item.snippet.thumbnails.medium?.url,
-        publishedAt: item.snippet.publishedAt,
-      }));
+    const filteredItems = (data.items || []).filter((item) => item.id?.videoId);
+
+    // Fetch view counts via Videos API (part=statistics)
+    let viewCounts = {};
+    const videoIds = filteredItems.map((item) => item.id.videoId).join(',');
+    if (videoIds) {
+      try {
+        const statsUrl = `https://www.googleapis.com/youtube/v3/videos?part=statistics&id=${videoIds}&key=${API_KEY}`;
+        const statsRes = await fetch(statsUrl, { cache: 'no-store' });
+        const statsData = await statsRes.json();
+        if (statsRes.ok && statsData.items) {
+          for (const v of statsData.items) {
+            viewCounts[v.id] = v.statistics?.viewCount || null;
+          }
+        }
+      } catch (statsError) {
+        console.error('YouTube Stats Fetch Error:', statsError);
+      }
+    }
+
+    const formattedItems = filteredItems.map((item) => ({
+      id: item.id.videoId,
+      title: item.snippet.title,
+      artist: item.snippet.channelTitle,
+      thumbnail: item.snippet.thumbnails.high?.url || item.snippet.thumbnails.medium?.url,
+      publishedAt: item.snippet.publishedAt,
+      viewCount: viewCounts[item.id.videoId] || null,
+    }));
 
     return {
       items: formattedItems,

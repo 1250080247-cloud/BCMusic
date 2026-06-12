@@ -1,7 +1,7 @@
 "use client";
 
 import Image from 'next/image';
-import { formatDate, formatDateTime, getDictionary } from '@/lib/i18n';
+import { formatDate, formatDateTime, formatViewCount, getDictionary } from '@/lib/i18n';
 import { useMusicStore, useSettingsStore } from '@/lib/store';
 
 export default function SongCard({ song, playlist }) {
@@ -9,11 +9,15 @@ export default function SongCard({ song, playlist }) {
   const language = useSettingsStore((state) => state.language);
   const t = getDictionary(language);
   const hasHistoryMeta = Boolean(song.listenedAt);
+  const viewText = formatViewCount(song.viewCount, language);
+  const artistName = song.artist || t.common.unknownArtist;
   const primaryMeta = hasHistoryMeta
     ? `${t.history.listenedAt}: ${formatDateTime(song.listenedAt, language)}`
-    : song.artist || t.common.unknownArtist;
+    : viewText
+      ? `${viewText} · ${artistName}`
+      : artistName;
   const secondaryMeta = hasHistoryMeta && song.artist
-    ? song.artist
+    ? (viewText ? `${viewText} · ${song.artist}` : song.artist)
     : song.publishedAt
       ? `${t.modal.releaseDate}: ${formatDate(song.publishedAt, language)}`
       : '';

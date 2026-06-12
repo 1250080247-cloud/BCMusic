@@ -7,6 +7,7 @@ const CachedSongSchema = new mongoose.Schema(
     artist: { type: String },
     thumbnail: { type: String },
     publishedAt: { type: String },
+    viewCount: { type: String },
   },
   { _id: false }
 );

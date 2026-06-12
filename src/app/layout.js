@@ -1,4 +1,5 @@
 import { Geist, Geist_Mono } from "next/font/google";
+import PersistentShell from "@/components/PersistentShell";
 import SettingsBridge from "@/components/SettingsBridge";
 import "./globals.css";
 
@@ -25,7 +26,9 @@ export default function RootLayout({ children }) {
         suppressHydrationWarning
       >
         <SettingsBridge />
-        {children}
+        <PersistentShell>
+          {children}
+        </PersistentShell>
       </body>
     </html>
   );

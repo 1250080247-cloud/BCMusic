@@ -1,12 +1,9 @@
-import BottomNav from "@/components/BottomNav";
 import DualViewSection from "@/components/DualViewSection";
 import HomeEmptyState from "@/components/HomeEmptyState";
 import HomeHeader from "@/components/HomeHeader";
 import PaginationControls from "@/components/PaginationControls";
-import Player from "@/components/Player";
 import RankingSection from "@/components/RankingSection";
 import SongCard from "@/components/SongCard";
-import SongModal from "@/components/SongModal";
 import { getYouTubeSongs } from "@/lib/youtube";
 
 // ISR: Next.js sẽ tái tạo trang tối đa mỗi 30 phút
@@ -120,10 +117,6 @@ export default async function Home({ searchParams }) {
           </>
         )}
       </section>
-
-      <Player />
-      <SongModal />
-      <BottomNav />
     </main>
   );
 }

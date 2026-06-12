@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useState, useRef, useEffect } from 'react';
 import { getDictionary } from '@/lib/i18n';
-import { useSettingsStore } from '@/lib/store';
+import { useMusicStore, useSettingsStore } from '@/lib/store';
 
 const navItems = [
   { key: 'home', href: '/', icon: Home },
@@ -18,6 +18,7 @@ export default function BottomNav() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const language = useSettingsStore((state) => state.language);
+  const currentSong = useMusicStore((state) => state.currentSong);
   const t = getDictionary(language);
 
   const currentSearch = searchParams.get('search') || '';
@@ -77,7 +78,7 @@ export default function BottomNav() {
             ? 'pointer-events-auto translate-y-0 opacity-100'
             : 'pointer-events-none translate-y-4 opacity-0'
         }`}
-        style={{ bottom: '62px', width: '92%', maxWidth: '480px' }}
+        style={{ bottom: currentSong ? '152px' : '62px', width: '92%', maxWidth: '480px' }}
       >
         <form
           onSubmit={handleSubmit}

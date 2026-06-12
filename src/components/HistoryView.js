@@ -2,11 +2,8 @@
 
 import { Clock, Music, Sparkles } from 'lucide-react';
 import Image from 'next/image';
-import BottomNav from '@/components/BottomNav';
-import Player from '@/components/Player';
 import SettingsPanel from '@/components/SettingsPanel';
 import SongCard from '@/components/SongCard';
-import SongModal from '@/components/SongModal';
 import { formatDateTime, getDictionary } from '@/lib/i18n';
 import { useSettingsStore } from '@/lib/store';
 
@@ -92,10 +89,6 @@ export default function HistoryView({ songs }) {
           </div>
         )}
       </section>
-
-      <Player />
-      <SongModal />
-      <BottomNav />
     </main>
   );
 }

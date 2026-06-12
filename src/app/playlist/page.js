@@ -3,10 +3,7 @@
 import { ChevronDown, ChevronUp, ListMusic, Music, Play, Plus, Trash2, X } from 'lucide-react';
 import Image from 'next/image';
 import { useCallback, useEffect, useState } from 'react';
-import BottomNav from '@/components/BottomNav';
-import Player from '@/components/Player';
 import SettingsPanel from '@/components/SettingsPanel';
-import SongModal from '@/components/SongModal';
 import { formatDateTime, getDictionary } from '@/lib/i18n';
 import { useMusicStore, useSettingsStore, useUserStore } from '@/lib/store';
 
@@ -304,10 +301,6 @@ export default function PlaylistPage() {
           </div>
         )}
       </section>
-
-      <Player />
-      <SongModal />
-      <BottomNav />
     </main>
   );
 }
