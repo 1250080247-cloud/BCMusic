@@ -118,9 +118,9 @@ export default function Player() {
   if (!currentSong) return null;
 
   return (
-    <div className="player-shell fixed bottom-0 left-0 right-0 z-50 p-4">
+    <div className="player-shell fixed bottom-16 left-0 right-0 z-50 p-4">
       {isLyricsOpen && (
-        <section className="lyrics-panel fixed bottom-24 right-4 z-[60] max-h-[60vh] w-[min(24rem,calc(100vw-2rem))] overflow-hidden rounded-3xl p-5">
+        <section className="lyrics-panel fixed bottom-40 right-4 z-[60] max-h-[50vh] w-[min(24rem,calc(100vw-2rem))] overflow-hidden rounded-3xl p-5">
           <div className="mb-4 flex items-start justify-between gap-4">
             <div>
               <p className="text-sm font-semibold uppercase tracking-[0.25em] text-pink-400">

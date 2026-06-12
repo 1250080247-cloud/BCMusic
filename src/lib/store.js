@@ -35,3 +35,22 @@ export const useSettingsStore = create(
     }
   )
 );
+
+export const useUserStore = create(
+  persist(
+    (set, get) => ({
+      userId: null,
+      getUserId: () => {
+        const existing = get().userId;
+        if (existing) return existing;
+        const newId = Date.now().toString(36) + Math.random().toString(36).slice(2, 9);
+        set({ userId: newId });
+        return newId;
+      },
+    }),
+    {
+      name: 'bcmusic-user',
+      partialize: (state) => ({ userId: state.userId }),
+    }
+  )
+);

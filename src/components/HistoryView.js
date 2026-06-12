@@ -1,8 +1,8 @@
 "use client";
 
-import { Clock, Home, Music, Sparkles } from 'lucide-react';
+import { Clock, Music, Sparkles } from 'lucide-react';
 import Image from 'next/image';
-import Link from 'next/link';
+import BottomNav from '@/components/BottomNav';
 import Player from '@/components/Player';
 import SettingsPanel from '@/components/SettingsPanel';
 import SongCard from '@/components/SongCard';
@@ -16,7 +16,7 @@ export default function HistoryView({ songs }) {
   const latestListen = songs[0]?.listenedAt ? formatDateTime(songs[0].listenedAt, language) : t.common.unknownDate;
 
   return (
-    <main className="app-shell relative pb-32">
+    <main className="app-shell relative pb-44">
       <header className="px-4 pt-10 sm:px-8 sm:pt-12">
         <div className="mx-auto max-w-screen-xl">
           <div className="relative flex flex-col items-center text-center">
@@ -40,13 +40,6 @@ export default function HistoryView({ songs }) {
             </div>
 
             <p className="muted-text max-w-2xl text-sm sm:text-base">{t.history.subtitle}</p>
-
-            <Link href="/" className="mt-6">
-              <span className="pill-button gap-2 px-5 py-2 text-sm font-semibold">
-                <Home size={18} />
-                {t.history.backHome}
-              </span>
-            </Link>
           </div>
         </div>
       </header>
@@ -102,6 +95,7 @@ export default function HistoryView({ songs }) {
 
       <Player />
       <SongModal />
+      <BottomNav />
     </main>
   );
 }

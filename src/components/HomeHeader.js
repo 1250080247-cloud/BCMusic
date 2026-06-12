@@ -1,12 +1,13 @@
 "use client";
 
 import Image from 'next/image';
-import Link from 'next/link';
+import CategoryScroller from '@/components/CategoryScroller';
+import SearchBar from '@/components/SearchBar';
 import SettingsPanel from '@/components/SettingsPanel';
 import { getDictionary } from '@/lib/i18n';
 import { useSettingsStore } from '@/lib/store';
 
-export default function HomeHeader({ categories, currentQuery }) {
+export default function HomeHeader({ categories, currentQuery, currentSearch }) {
   const language = useSettingsStore((state) => state.language);
   const t = getDictionary(language);
 
@@ -14,12 +15,7 @@ export default function HomeHeader({ categories, currentQuery }) {
     <header className="px-4 pt-10 sm:px-8 sm:pt-12">
       <div className="mx-auto flex max-w-screen-xl flex-col items-center text-center">
         <div className="relative mb-7 flex w-full items-center justify-center">
-          <div className="absolute right-0 top-0 flex items-center gap-2">
-            <Link href="/history" className="hidden sm:inline-flex">
-              <span className="pill-button px-5 py-2 text-sm font-semibold">
-                {t.home.openHistory}
-              </span>
-            </Link>
+          <div className="absolute right-0 top-0">
             <SettingsPanel />
           </div>
 
@@ -38,23 +34,11 @@ export default function HomeHeader({ categories, currentQuery }) {
           </div>
         </div>
 
-        <Link href="/history" className="mb-5 sm:hidden">
-          <span className="pill-button px-5 py-2 text-sm font-semibold">{t.home.openHistory}</span>
-        </Link>
+        <SearchBar currentSearch={currentSearch} />
 
-        <nav className="scrollbar-hide flex w-full max-w-3xl justify-start gap-3 overflow-x-auto pb-4 sm:justify-center">
-          {categories.map((category) => {
-            const isActive = currentQuery === category.query;
-
-            return (
-              <Link key={category.key} href={`/?genre=${encodeURIComponent(category.query)}`}>
-                <span className={`category-pill ${isActive ? 'is-active' : ''}`}>
-                  {t.home.categories[category.key]}
-                </span>
-              </Link>
-            );
-          })}
-        </nav>
+        {!currentSearch && (
+          <CategoryScroller categories={categories} currentQuery={currentQuery} />
+        )}
       </div>
     </header>
   );

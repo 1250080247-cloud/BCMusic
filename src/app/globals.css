@@ -252,3 +252,174 @@ select {
 .scrollbar-hide::-webkit-scrollbar {
   display: none;
 }
+
+/* ── Search Bar ── */
+
+.search-input {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--app-text);
+  backdrop-filter: blur(12px);
+  outline: none;
+  transition: border-color 220ms ease, box-shadow 220ms ease;
+}
+
+.search-input::placeholder {
+  color: var(--muted-text);
+}
+
+.search-input:focus {
+  border-color: var(--accent-pink);
+  box-shadow: 0 0 0 3px rgba(236, 72, 153, 0.18), 0 8px 32px rgba(236, 72, 153, 0.1);
+}
+
+.search-submit-button {
+  background: linear-gradient(135deg, #ec4899, #8b5cf6);
+  border: none;
+  transition: transform 180ms ease, box-shadow 180ms ease;
+}
+
+.search-submit-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 24px rgba(236, 72, 153, 0.3);
+}
+
+/* ── Category Scroller ── */
+
+.category-scroller-wrapper {
+  position: relative;
+}
+
+.category-scroller-fade-left,
+.category-scroller-fade-right {
+  position: absolute;
+  top: 0;
+  bottom: 1rem;
+  width: 3rem;
+  pointer-events: none;
+  z-index: 10;
+}
+
+.category-scroller-fade-left {
+  left: 0;
+  background: linear-gradient(to right, var(--app-bg), transparent);
+}
+
+.category-scroller-fade-right {
+  right: 0;
+  background: linear-gradient(to left, var(--app-bg), transparent);
+}
+
+.category-scroller-arrow {
+  position: absolute;
+  top: 50%;
+  transform: translateY(calc(-50% - 0.5rem));
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 2rem;
+  width: 2rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface-strong);
+  color: var(--app-text);
+  backdrop-filter: blur(8px);
+  cursor: pointer;
+  transition: transform 180ms ease, background 180ms ease, border-color 180ms ease;
+}
+
+.category-scroller-arrow:hover {
+  background: var(--surface-hover);
+  border-color: var(--border-strong);
+  transform: translateY(calc(-50% - 0.5rem)) scale(1.08);
+}
+
+.category-scroller-arrow-left {
+  left: -0.25rem;
+}
+
+.category-scroller-arrow-right {
+  right: -0.25rem;
+}
+
+/* ── Ranking ── */
+
+.ranking-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  transition: transform 260ms ease, border-color 260ms ease, box-shadow 260ms ease;
+}
+
+.ranking-card:hover {
+  transform: translateY(-4px) scale(1.02);
+  border-color: var(--border-strong);
+  box-shadow: 0 16px 48px rgba(236, 72, 153, 0.18);
+}
+
+.ranking-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 1.75rem;
+  min-width: 1.75rem;
+  padding: 0 0.35rem;
+  border-radius: 0.65rem;
+  background: linear-gradient(135deg, #f59e0b, #ef4444);
+  color: white;
+  box-shadow: 0 4px 12px rgba(245, 158, 11, 0.35);
+}
+
+/* ── Section Header ── */
+
+.section-header {
+  background: linear-gradient(90deg, var(--app-text), var(--muted-text));
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* ── Search Results Label ── */
+
+.search-results-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  border-radius: 999px;
+  padding: 0.5rem 1rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  backdrop-filter: blur(12px);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+/* ── Bottom Navigation ── */
+
+.bottom-nav {
+  background: var(--player-bg);
+  border-top: 1px solid var(--border);
+  backdrop-filter: blur(22px);
+  padding: 0.35rem 0;
+}
+
+.bottom-nav-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.2rem;
+  padding: 0.5rem 1.5rem;
+  color: var(--muted-text);
+  text-decoration: none;
+  transition: color 180ms ease, transform 180ms ease;
+  border-radius: 0.75rem;
+}
+
+.bottom-nav-item:hover {
+  color: var(--app-text);
+}
+
+.bottom-nav-item.is-active {
+  color: var(--app-text);
+}
