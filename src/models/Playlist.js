@@ -7,6 +7,9 @@ const SongSubSchema = new mongoose.Schema(
     thumbnail: { type: String },
     artist: { type: String },
     publishedAt: { type: String },
+    source: { type: String, default: 'youtube' },
+    embedUrl: { type: String },
+    sourceUrl: { type: String },
   },
   { _id: false }
 );

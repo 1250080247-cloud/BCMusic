@@ -39,6 +39,9 @@ export async function POST(request) {
       thumbnail: body.song.thumbnail,
       artist: body.song.artist,
       publishedAt: body.song.publishedAt,
+      source: body.song.source || 'youtube',
+      embedUrl: body.song.embedUrl,
+      sourceUrl: body.song.sourceUrl,
     });
 
     await playlist.save();

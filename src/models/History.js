@@ -21,6 +21,10 @@ const HistorySchema = new mongoose.Schema({
   lyrics: {
     type: String,
   },
+  source: {
+    type: String,
+    default: 'youtube',
+  },
   listenedAt: {
     type: Date,
     default: Date.now,

@@ -1,6 +1,6 @@
 "use client";
 
-import { Home, Library, ListMusic, Search, X } from 'lucide-react';
+import { CloudDownload, Home, Library, ListMusic, Search, X } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useState, useRef, useEffect } from 'react';
@@ -154,6 +154,15 @@ export default function BottomNav() {
           >
             <ListMusic size={22} strokeWidth={pathname === '/playlist' ? 2.2 : 1.6} />
             <span className="text-[11px] font-semibold">{t.bottomNav.playlist}</span>
+          </Link>
+
+          {/* SoundCloud */}
+          <Link
+            href="/soundcloud"
+            className={`bottom-nav-item ${pathname === '/soundcloud' ? 'is-active' : ''}`}
+          >
+            <CloudDownload size={22} strokeWidth={pathname === '/soundcloud' ? 2.2 : 1.6} />
+            <span className="text-[11px] font-semibold">{t.bottomNav.soundcloud}</span>
           </Link>
         </div>
       </nav>

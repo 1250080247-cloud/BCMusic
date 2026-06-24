@@ -57,6 +57,7 @@ async function fetchFromYouTube(searchQuery, pageToken = '', order = 'relevance'
       thumbnail: item.snippet.thumbnails.high?.url || item.snippet.thumbnails.medium?.url,
       publishedAt: item.snippet.publishedAt,
       viewCount: viewCounts[item.id.videoId] || null,
+      source: 'youtube',
     }));
 
     return {

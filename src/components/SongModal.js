@@ -62,6 +62,9 @@ export default function SongModal() {
             thumbnail: viewingSong.thumbnail,
             artist: viewingSong.artist,
             publishedAt: viewingSong.publishedAt,
+            source: viewingSong.source || 'youtube',
+            embedUrl: viewingSong.embedUrl,
+            sourceUrl: viewingSong.sourceUrl,
           },
         }),
       });
@@ -87,7 +90,9 @@ export default function SongModal() {
 
   if (!viewingSong) return null;
 
-  const youtubeUrl = viewingSong.id ? `https://www.youtube.com/watch?v=${viewingSong.id}` : null;
+  const isSC = viewingSong.source === 'soundcloud';
+  const youtubeUrl = !isSC && viewingSong.id ? `https://www.youtube.com/watch?v=${viewingSong.id}` : null;
+  const soundcloudUrl = isSC ? viewingSong.sourceUrl : null;
   const songDetails = [
     {
       icon: Radio,
@@ -159,6 +164,17 @@ export default function SongModal() {
                 >
                   <ExternalLink size={18} />
                   {t.modal.openOnYouTube}
+                </a>
+              )}
+              {soundcloudUrl && (
+                <a
+                  href={soundcloudUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="pill-button gap-2 px-5 py-3 text-sm font-bold"
+                >
+                  <ExternalLink size={18} />
+                  {t.soundcloud?.openOnSoundCloud || 'Open on SoundCloud'}
                 </a>
               )}
             </div>

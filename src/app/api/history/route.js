@@ -21,6 +21,7 @@ export async function POST(request) {
       artist: body.artist,
       publishedAt: body.publishedAt,
       lyrics: body.lyrics,
+      source: body.source || 'youtube',
     });
 
     return NextResponse.json({ success: true, data: newHistory });

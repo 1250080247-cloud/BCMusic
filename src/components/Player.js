@@ -2,7 +2,7 @@
 
 import { FileText, Pause, Play, SkipBack, SkipForward, X } from 'lucide-react';
 import Image from 'next/image';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import YouTube from 'react-youtube';
 import { getDictionary } from '@/lib/i18n';
 import { useMusicStore, useSettingsStore } from '@/lib/store';
@@ -12,14 +12,20 @@ export default function Player() {
   const [isLyricsOpen, setIsLyricsOpen] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
-  const playerRef = useRef(null);
+  const ytPlayerRef = useRef(null);
+  const scWidgetRef = useRef(null);
+  const scIframeRef = useRef(null);
   const lastSongIdRef = useRef(null);
+  const scApiLoadedRef = useRef(false);
   const { currentSong, playlist, setCurrentSong, setViewingSong } = useMusicStore();
   const language = useSettingsStore((state) => state.language);
   const volume = useSettingsStore((state) => state.volume);
   const playbackRate = useSettingsStore((state) => state.playbackRate);
   const t = getDictionary(language);
 
+  const isSoundCloud = currentSong?.source === 'soundcloud';
+
+  // Save to history whenever currentSong changes
   useEffect(() => {
     if (!currentSong) return;
 
@@ -35,35 +41,42 @@ export default function Player() {
         artist: currentSong.artist,
         publishedAt: currentSong.publishedAt,
         lyrics: currentSong.lyrics,
+        source: currentSong.source || 'youtube',
       }),
     }).catch((error) => console.log('Unable to save listening history', error));
   }, [currentSong]);
 
+  // ─── YouTube: Volume sync ──────────────────────────────
   useEffect(() => {
-    if (playerRef.current?.setVolume) {
-      playerRef.current.setVolume(volume);
+    if (isSoundCloud) return;
+    if (ytPlayerRef.current?.setVolume) {
+      ytPlayerRef.current.setVolume(volume);
     }
-  }, [volume]);
+  }, [volume, isSoundCloud]);
 
+  // ─── YouTube: Playback rate sync ───────────────────────
   useEffect(() => {
-    if (playerRef.current?.setPlaybackRate) {
+    if (isSoundCloud) return;
+    if (ytPlayerRef.current?.setPlaybackRate) {
       try {
-        playerRef.current.setPlaybackRate(playbackRate);
+        ytPlayerRef.current.setPlaybackRate(playbackRate);
       } catch {
-        setTimeout(() => playerRef.current?.setPlaybackRate?.(playbackRate), 500);
+        setTimeout(() => ytPlayerRef.current?.setPlaybackRate?.(playbackRate), 500);
       }
     }
-  }, [playbackRate, currentSong]);
+  }, [playbackRate, currentSong, isSoundCloud]);
 
+  // ─── YouTube: Time tracking ────────────────────────────
   useEffect(() => {
+    if (isSoundCloud) return;
     let interval;
 
     if (isPlaying) {
       interval = setInterval(async () => {
-        if (playerRef.current && typeof playerRef.current.getCurrentTime === 'function') {
+        if (ytPlayerRef.current && typeof ytPlayerRef.current.getCurrentTime === 'function') {
           try {
-            const time = await playerRef.current.getCurrentTime();
-            const videoDuration = await playerRef.current.getDuration();
+            const time = await ytPlayerRef.current.getCurrentTime();
+            const videoDuration = await ytPlayerRef.current.getDuration();
             if (time !== undefined) setCurrentTime(time);
             if (videoDuration !== undefined) setDuration(videoDuration);
           } catch {
@@ -73,14 +86,112 @@ export default function Player() {
     }
 
     return () => clearInterval(interval);
-  }, [isPlaying]);
+  }, [isPlaying, isSoundCloud]);
 
-  const playNext = () => {
+  // ─── SoundCloud: Load Widget API script ────────────────
+  useEffect(() => {
+    if (scApiLoadedRef.current) return;
+    if (typeof window === 'undefined') return;
+
+    // Check if already loaded
+    if (window.SC?.Widget) {
+      scApiLoadedRef.current = true;
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.src = 'https://w.soundcloud.com/player/api.js';
+    script.async = true;
+    script.onload = () => {
+      scApiLoadedRef.current = true;
+    };
+    document.head.appendChild(script);
+  }, []);
+
+  // ─── SoundCloud: Initialize widget when song changes ───
+  useEffect(() => {
+    if (!isSoundCloud || !currentSong?.embedUrl) return;
+    if (!scIframeRef.current) return;
+
+    const initWidget = () => {
+      if (!window.SC?.Widget || !scIframeRef.current) return;
+
+      const widget = window.SC.Widget(scIframeRef.current);
+      scWidgetRef.current = widget;
+
+      widget.bind(window.SC.Widget.Events.READY, () => {
+        // Set volume (SC widget volume: 0–100)
+        widget.setVolume(volume);
+
+        // Auto-play
+        widget.play();
+
+        // Get duration
+        widget.getDuration((dur) => {
+          if (dur) setDuration(dur / 1000); // ms → seconds
+        });
+
+        // Reset time tracking
+        if (lastSongIdRef.current !== currentSong.id) {
+          lastSongIdRef.current = currentSong.id;
+          setCurrentTime(0);
+          setDuration(0);
+        }
+      });
+
+      widget.bind(window.SC.Widget.Events.PLAY, () => {
+        setIsPlaying(true);
+      });
+
+      widget.bind(window.SC.Widget.Events.PAUSE, () => {
+        setIsPlaying(false);
+      });
+
+      widget.bind(window.SC.Widget.Events.FINISH, () => {
+        setIsPlaying(false);
+        playNext();
+      });
+
+      widget.bind(window.SC.Widget.Events.PLAY_PROGRESS, (data) => {
+        if (data?.currentPosition !== undefined) {
+          setCurrentTime(data.currentPosition / 1000); // ms → seconds
+        }
+      });
+    };
+
+    // Wait for SC API to be available
+    if (window.SC?.Widget) {
+      initWidget();
+    } else {
+      const checkInterval = setInterval(() => {
+        if (window.SC?.Widget) {
+          clearInterval(checkInterval);
+          initWidget();
+        }
+      }, 200);
+
+      return () => clearInterval(checkInterval);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentSong?.id, currentSong?.embedUrl, isSoundCloud]);
+
+  // ─── SoundCloud: Volume sync ───────────────────────────
+  useEffect(() => {
+    if (!isSoundCloud || !scWidgetRef.current) return;
+    try {
+      scWidgetRef.current.setVolume(volume);
+    } catch {
+      // widget not ready yet
+    }
+  }, [volume, isSoundCloud]);
+
+  // ─── Navigation ────────────────────────────────────────
+  const playNext = useCallback(() => {
     if (!playlist.length || !currentSong) return;
     const currentIndex = playlist.findIndex((song) => song.id === currentSong.id);
     const nextIndex = currentIndex === -1 ? 0 : (currentIndex + 1) % playlist.length;
     setCurrentSong(playlist[nextIndex]);
-  };
+  }, [playlist, currentSong, setCurrentSong]);
 
   const playPrev = () => {
     if (!playlist.length || !currentSong) return;
@@ -89,23 +200,46 @@ export default function Player() {
     setCurrentSong(playlist[prevIndex]);
   };
 
+  // ─── YouTube: Player ready ─────────────────────────────
   const onPlayerReady = (event) => {
-    playerRef.current = event.target;
+    ytPlayerRef.current = event.target;
     event.target.setVolume(volume);
     event.target.setPlaybackRate?.(playbackRate);
     if (currentSong) event.target.playVideo();
   };
 
+  // ─── Toggle play/pause (dual source) ──────────────────
   const togglePlay = () => {
-    if (!playerRef.current || typeof playerRef.current.playVideo !== 'function') return;
-
-    if (isPlaying) {
-      playerRef.current.pauseVideo();
+    if (isSoundCloud) {
+      if (!scWidgetRef.current) return;
+      try {
+        scWidgetRef.current.isPaused((paused) => {
+          if (paused) {
+            scWidgetRef.current.play();
+          } else {
+            scWidgetRef.current.pause();
+          }
+        });
+      } catch {
+        // If isPaused fails, try toggle
+        if (isPlaying) {
+          scWidgetRef.current.pause();
+        } else {
+          scWidgetRef.current.play();
+        }
+        setIsPlaying(!isPlaying);
+      }
     } else {
-      playerRef.current.playVideo();
-    }
+      if (!ytPlayerRef.current || typeof ytPlayerRef.current.playVideo !== 'function') return;
 
-    setIsPlaying(!isPlaying);
+      if (isPlaying) {
+        ytPlayerRef.current.pauseVideo();
+      } else {
+        ytPlayerRef.current.playVideo();
+      }
+
+      setIsPlaying(!isPlaying);
+    }
   };
 
   const formatTime = (time) => {
@@ -155,26 +289,48 @@ export default function Player() {
         </section>
       )}
 
-      <div className="hidden">
-        <YouTube
-          videoId={currentSong.id}
-          opts={{ playerVars: { autoplay: 1, controls: 0, rel: 0 } }}
-          onReady={onPlayerReady}
-          onStateChange={(event) => {
-            if (event.data === 1) {
-              if (lastSongIdRef.current !== currentSong.id) {
-                lastSongIdRef.current = currentSong.id;
-                setCurrentTime(0);
-                setDuration(0);
-              }
-              setIsPlaying(true);
-            }
-            if (event.data === 2) setIsPlaying(false);
-            if (event.data === 0) playNext();
-          }}
-        />
-      </div>
+      {/* ─── Hidden Players ──────────────────────────────── */}
 
+      {/* YouTube Player (only rendered for YouTube tracks) */}
+      {!isSoundCloud && (
+        <div className="hidden">
+          <YouTube
+            videoId={currentSong.id}
+            opts={{ playerVars: { autoplay: 1, controls: 0, rel: 0 } }}
+            onReady={onPlayerReady}
+            onStateChange={(event) => {
+              if (event.data === 1) {
+                if (lastSongIdRef.current !== currentSong.id) {
+                  lastSongIdRef.current = currentSong.id;
+                  setCurrentTime(0);
+                  setDuration(0);
+                }
+                setIsPlaying(true);
+              }
+              if (event.data === 2) setIsPlaying(false);
+              if (event.data === 0) playNext();
+            }}
+          />
+        </div>
+      )}
+
+      {/* SoundCloud Widget (only rendered for SoundCloud tracks) */}
+      {isSoundCloud && currentSong.embedUrl && (
+        <div className="hidden">
+          <iframe
+            ref={scIframeRef}
+            key={currentSong.id}
+            id="sc-widget"
+            title="SoundCloud Player"
+            width="100%"
+            height="166"
+            allow="autoplay"
+            src={currentSong.embedUrl}
+          />
+        </div>
+      )}
+
+      {/* ─── Visible Player UI (shared for both sources) ─ */}
       <div className="mx-auto flex max-w-screen-xl items-center justify-between gap-4">
         <button
           type="button"
@@ -200,7 +356,14 @@ export default function Player() {
                 <span className="player-title-copy" aria-hidden="true" dangerouslySetInnerHTML={{ __html: currentSong.title }} />
               </div>
             </div>
-            <p className="muted-text truncate text-sm">{currentSong.artist}</p>
+            <p className="muted-text truncate text-sm">
+              {currentSong.artist}
+              {isSoundCloud && (
+                <span className="ml-2 inline-flex items-center rounded bg-orange-500/15 px-1.5 py-0.5 text-[10px] font-bold text-orange-400">
+                  SC
+                </span>
+              )}
+            </p>
           </div>
         </button>
 
@@ -242,7 +405,12 @@ export default function Player() {
               onChange={(event) => {
                 const value = Number(event.target.value);
                 setCurrentTime(value);
-                playerRef.current?.seekTo?.(value, true);
+
+                if (isSoundCloud && scWidgetRef.current) {
+                  scWidgetRef.current.seekTo(value * 1000); // seconds → ms
+                } else {
+                  ytPlayerRef.current?.seekTo?.(value, true);
+                }
               }}
               className="music-range h-1 w-full cursor-pointer appearance-none rounded-lg bg-slate-500/40"
             />
@@ -261,7 +429,7 @@ export default function Player() {
             {t.lyrics.title}
           </button>
           <span className="rounded-full border border-[var(--border)] px-3 py-1 text-xs font-semibold text-[var(--muted-text)]">
-            {playbackRate}x · {volume}%
+            {isSoundCloud ? 'SC' : `${playbackRate}x`} · {volume}%
           </span>
         </div>
       </div>

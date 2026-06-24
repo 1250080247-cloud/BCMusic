@@ -17,6 +17,7 @@ async function getListeningHistory() {
       artist: doc.artist,
       publishedAt: doc.publishedAt,
       lyrics: doc.lyrics,
+      source: doc.source || 'youtube',
       listenedAt: doc.listenedAt ? new Date(doc.listenedAt).toISOString() : null,
     }));
   } catch (error) {
