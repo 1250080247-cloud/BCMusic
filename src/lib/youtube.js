@@ -19,7 +19,7 @@ async function fetchFromYouTube(searchQuery, pageToken = '', order = 'relevance'
   if (!API_KEY) return { items: [], nextPageToken: null, prevPageToken: null };
 
   const tokenParam = pageToken ? `&pageToken=${pageToken}` : '';
-  const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=${maxResults}&q=${encodeURIComponent(searchQuery)}&type=video&order=${order}&key=${API_KEY}${tokenParam}`;
+  const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=${maxResults}&q=${encodeURIComponent(searchQuery)}&type=video&videoDuration=medium&order=${order}&key=${API_KEY}${tokenParam}`;
 
   try {
     const res = await fetch(url, { cache: 'no-store' });

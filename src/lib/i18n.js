@@ -74,6 +74,9 @@ export const dictionaries = {
       pause: 'Tạm dừng',
       next: 'Bài tiếp',
       showDetails: 'Xem thông tin bài hát',
+      repeatOff: 'Tắt lặp lại',
+      repeatAll: 'Lặp lại tất cả',
+      repeatOne: 'Lặp lại một bài',
     },
     lyrics: {
       title: 'Lời bài hát',
@@ -219,6 +222,9 @@ export const dictionaries = {
       pause: 'Pause',
       next: 'Next song',
       showDetails: 'Show song details',
+      repeatOff: 'Repeat off',
+      repeatAll: 'Repeat all',
+      repeatOne: 'Repeat one',
     },
     lyrics: {
       title: 'Lyrics',

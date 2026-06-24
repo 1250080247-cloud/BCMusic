@@ -43,8 +43,8 @@ export default async function Home({ searchParams }) {
   let rankingSongs = [];
 
   if (isSearchMode) {
-    // Search mode: sort by view count to show most popular first
-    const result = await getYouTubeSongs(currentSearch, currentToken, "viewCount");
+    // Search mode: sort by relevance so newer songs also appear
+    const result = await getYouTubeSongs(currentSearch, currentToken, "relevance");
     searchSongs = result.items;
     searchNextToken = result.nextPageToken;
     searchPrevToken = result.prevPageToken;

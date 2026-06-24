@@ -1,6 +1,6 @@
 "use client";
 
-import { FileText, Pause, Play, SkipBack, SkipForward, X } from 'lucide-react';
+import { FileText, Pause, Play, Repeat, Repeat1, SkipBack, SkipForward, X } from 'lucide-react';
 import Image from 'next/image';
 import { useEffect, useRef, useState, useCallback } from 'react';
 import YouTube from 'react-youtube';
@@ -17,7 +17,8 @@ export default function Player() {
   const scIframeRef = useRef(null);
   const lastSongIdRef = useRef(null);
   const scApiLoadedRef = useRef(false);
-  const { currentSong, playlist, setCurrentSong, setViewingSong } = useMusicStore();
+  const handleTrackEndRef = useRef(null);
+  const { currentSong, playlist, setCurrentSong, setViewingSong, repeatMode, cycleRepeatMode } = useMusicStore();
   const language = useSettingsStore((state) => state.language);
   const volume = useSettingsStore((state) => state.volume);
   const playbackRate = useSettingsStore((state) => state.playbackRate);
@@ -148,8 +149,7 @@ export default function Player() {
       });
 
       widget.bind(window.SC.Widget.Events.FINISH, () => {
-        setIsPlaying(false);
-        playNext();
+        handleTrackEndRef.current?.();
       });
 
       widget.bind(window.SC.Widget.Events.PLAY_PROGRESS, (data) => {
@@ -189,9 +189,20 @@ export default function Player() {
   const playNext = useCallback(() => {
     if (!playlist.length || !currentSong) return;
     const currentIndex = playlist.findIndex((song) => song.id === currentSong.id);
-    const nextIndex = currentIndex === -1 ? 0 : (currentIndex + 1) % playlist.length;
-    setCurrentSong(playlist[nextIndex]);
-  }, [playlist, currentSong, setCurrentSong]);
+    if (repeatMode === 'off') {
+      // Stop at end of playlist
+      const nextIndex = currentIndex + 1;
+      if (nextIndex >= playlist.length) {
+        setIsPlaying(false);
+        return;
+      }
+      setCurrentSong(playlist[nextIndex]);
+    } else {
+      // repeat 'all': wrap around
+      const nextIndex = currentIndex === -1 ? 0 : (currentIndex + 1) % playlist.length;
+      setCurrentSong(playlist[nextIndex]);
+    }
+  }, [playlist, currentSong, setCurrentSong, repeatMode]);
 
   const playPrev = () => {
     if (!playlist.length || !currentSong) return;
@@ -199,6 +210,29 @@ export default function Player() {
     const prevIndex = currentIndex === -1 ? 0 : (currentIndex - 1 + playlist.length) % playlist.length;
     setCurrentSong(playlist[prevIndex]);
   };
+
+  // Handle end-of-track (called by both YouTube and SoundCloud)
+  const handleTrackEnd = useCallback(() => {
+    if (repeatMode === 'one') {
+      // Replay the same track
+      if (isSoundCloud && scWidgetRef.current) {
+        scWidgetRef.current.seekTo(0);
+        scWidgetRef.current.play();
+      } else if (ytPlayerRef.current) {
+        ytPlayerRef.current.seekTo(0, true);
+        ytPlayerRef.current.playVideo();
+      }
+      setCurrentTime(0);
+    } else {
+      setIsPlaying(false);
+      playNext();
+    }
+  }, [repeatMode, isSoundCloud, playNext]);
+
+  // Keep ref in sync so event-listener closures always call the latest version
+  useEffect(() => {
+    handleTrackEndRef.current = handleTrackEnd;
+  }, [handleTrackEnd]);
 
   // ─── YouTube: Player ready ─────────────────────────────
   const onPlayerReady = (event) => {
@@ -308,7 +342,7 @@ export default function Player() {
                 setIsPlaying(true);
               }
               if (event.data === 2) setIsPlaying(false);
-              if (event.data === 0) playNext();
+              if (event.data === 0) handleTrackEndRef.current?.();
             }}
           />
         </div>
@@ -368,7 +402,34 @@ export default function Player() {
         </button>
 
         <div className="flex w-2/4 flex-col items-center justify-center md:w-1/3">
-          <div className="mb-2 flex items-center justify-center gap-6">
+          <div className="mb-2 flex items-center justify-center gap-4">
+            <button
+              type="button"
+              aria-label={
+                repeatMode === 'off' ? t.player.repeatOff
+                : repeatMode === 'all' ? t.player.repeatAll
+                : t.player.repeatOne
+              }
+              title={
+                repeatMode === 'off' ? t.player.repeatOff
+                : repeatMode === 'all' ? t.player.repeatAll
+                : t.player.repeatOne
+              }
+              onClick={cycleRepeatMode}
+              className={`relative transition ${
+                repeatMode === 'off'
+                  ? 'text-[var(--muted-text)] hover:text-[var(--app-text)]'
+                  : 'text-pink-400 hover:text-pink-300'
+              }`}
+            >
+              {repeatMode === 'one' ? <Repeat1 size={18} /> : <Repeat size={18} />}
+              {repeatMode !== 'off' && (
+                <span className="absolute -right-1 -top-1 flex h-2 w-2">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-pink-400 opacity-75" />
+                  <span className="relative inline-flex h-2 w-2 rounded-full bg-pink-500" />
+                </span>
+              )}
+            </button>
             <button
               type="button"
               aria-label={t.player.previous}

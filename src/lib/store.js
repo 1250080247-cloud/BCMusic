@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
-export const useMusicStore = create((set) => ({
+export const useMusicStore = create((set, get) => ({
   currentSong: null,
   playlist: [],
   setCurrentSong: (song) => set({ currentSong: song }),
@@ -9,6 +9,15 @@ export const useMusicStore = create((set) => ({
 
   viewingSong: null,
   setViewingSong: (song) => set({ viewingSong: song }),
+
+  // Repeat mode: 'off' | 'all' | 'one'
+  repeatMode: 'off',
+  setRepeatMode: (mode) => set({ repeatMode: mode }),
+  cycleRepeatMode: () => {
+    const current = get().repeatMode;
+    const next = current === 'off' ? 'all' : current === 'all' ? 'one' : 'off';
+    set({ repeatMode: next });
+  },
 }));
 
 export const useSettingsStore = create(
