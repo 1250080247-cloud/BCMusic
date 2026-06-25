@@ -10,6 +10,11 @@ export const useMusicStore = create((set, get) => ({
   viewingSong: null,
   setViewingSong: (song) => set({ viewingSong: song }),
 
+  // Now Playing panel
+  nowPlayingOpen: false,
+  setNowPlayingOpen: (open) => set({ nowPlayingOpen: open }),
+  toggleNowPlaying: () => set((state) => ({ nowPlayingOpen: !state.nowPlayingOpen })),
+
   // Repeat mode: 'off' | 'all' | 'one'
   repeatMode: 'off',
   setRepeatMode: (mode) => set({ repeatMode: mode }),
@@ -27,11 +32,22 @@ export const useSettingsStore = create(
       language: 'vi',
       volume: 80,
       playbackRate: 1,
+      searchHistory: [],
       setTheme: (theme) => set({ theme }),
       toggleTheme: () => set({ theme: get().theme === 'dark' ? 'light' : 'dark' }),
       setLanguage: (language) => set({ language }),
       setVolume: (volume) => set({ volume: Math.min(100, Math.max(0, Number(volume))) }),
       setPlaybackRate: (playbackRate) => set({ playbackRate: Number(playbackRate) }),
+      addSearchHistory: (term) => {
+        const trimmed = term.trim();
+        if (!trimmed) return;
+        const prev = get().searchHistory.filter((t) => t !== trimmed);
+        set({ searchHistory: [trimmed, ...prev].slice(0, 20) });
+      },
+      removeSearchHistory: (term) => {
+        set({ searchHistory: get().searchHistory.filter((t) => t !== term) });
+      },
+      clearSearchHistory: () => set({ searchHistory: [] }),
     }),
     {
       name: 'bcmusic-settings',
@@ -40,6 +56,7 @@ export const useSettingsStore = create(
         language: state.language,
         volume: state.volume,
         playbackRate: state.playbackRate,
+        searchHistory: state.searchHistory,
       }),
     }
   )

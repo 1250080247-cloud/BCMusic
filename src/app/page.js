@@ -64,7 +64,7 @@ export default async function Home({ searchParams }) {
   }
 
   return (
-    <main className="app-shell relative pb-44">
+    <main className="app-shell relative pb-8">
       <HomeHeader
         categories={categories}
         currentQuery={currentQuery}
@@ -76,7 +76,7 @@ export default async function Home({ searchParams }) {
         <RankingSection songs={rankingSongs} />
       )}
 
-      <section className="mx-auto max-w-4xl px-4 sm:px-8">
+      <section className="mx-auto px-4 sm:px-8" style={{ maxWidth: '80rem' }}>
         {isSearchMode ? (
           <>
 

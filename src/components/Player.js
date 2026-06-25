@@ -1,6 +1,6 @@
 "use client";
 
-import { FileText, Pause, Play, Repeat, Repeat1, SkipBack, SkipForward, X } from 'lucide-react';
+import { FileText, Heart, Pause, Play, Repeat, Repeat1, Shuffle, SkipBack, SkipForward, Volume2, X } from 'lucide-react';
 import Image from 'next/image';
 import { useEffect, useRef, useState, useCallback } from 'react';
 import YouTube from 'react-youtube';
@@ -18,7 +18,7 @@ export default function Player() {
   const lastSongIdRef = useRef(null);
   const scApiLoadedRef = useRef(false);
   const handleTrackEndRef = useRef(null);
-  const { currentSong, playlist, setCurrentSong, setViewingSong, repeatMode, cycleRepeatMode } = useMusicStore();
+  const { currentSong, playlist, setCurrentSong, repeatMode, cycleRepeatMode, toggleNowPlaying, setNowPlayingOpen } = useMusicStore();
   const language = useSettingsStore((state) => state.language);
   const volume = useSettingsStore((state) => state.volume);
   const playbackRate = useSettingsStore((state) => state.playbackRate);
@@ -283,10 +283,22 @@ export default function Player() {
     return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
   };
 
+  const handleCloseSong = () => {
+    // Stop playback
+    if (isSoundCloud && scWidgetRef.current) {
+      try { scWidgetRef.current.pause(); } catch { /* ignore */ }
+    } else if (ytPlayerRef.current?.pauseVideo) {
+      ytPlayerRef.current.pauseVideo();
+    }
+    setIsPlaying(false);
+    setNowPlayingOpen(false);
+    setCurrentSong(null);
+  };
+
   if (!currentSong) return null;
 
   return (
-    <div className="player-shell fixed bottom-16 left-0 right-0 z-50 p-4">
+    <div className="player-shell">
       {isLyricsOpen && (
         <section className="lyrics-panel fixed bottom-40 right-4 z-[60] max-h-[50vh] w-[min(24rem,calc(100vw-2rem))] overflow-hidden rounded-3xl p-5">
           <div className="mb-4 flex items-start justify-between gap-4">
@@ -365,32 +377,33 @@ export default function Player() {
       )}
 
       {/* ─── Visible Player UI (shared for both sources) ─ */}
-      <div className="mx-auto flex max-w-screen-xl items-center justify-between gap-4">
+      <div className="player-inner">
+        {/* Left: Song info (clickable to open Now Playing panel) */}
         <button
           type="button"
           aria-label={t.player.showDetails}
-          onClick={() => setViewingSong(currentSong)}
-          className="flex min-w-0 w-1/4 items-center gap-4 text-left md:w-1/3"
+          onClick={toggleNowPlaying}
+          className="player-song-info"
         >
-          <div className="hidden h-14 w-14 flex-shrink-0 overflow-hidden rounded-xl bg-[var(--surface-strong)] sm:block">
+          <div className="player-thumb">
             {currentSong.thumbnail && (
               <Image
                 src={currentSong.thumbnail}
                 alt={t.player.coverAlt}
-                width={56}
-                height={56}
+                width={48}
+                height={48}
                 className="h-full w-full object-cover"
               />
             )}
           </div>
-          <div className="min-w-0 flex-1">
+          <div className="player-song-text">
             <div className="player-title-marquee font-semibold text-[var(--app-text)]">
               <div className="player-title-track">
                 <span className="player-title-copy" dangerouslySetInnerHTML={{ __html: currentSong.title }} />
                 <span className="player-title-copy" aria-hidden="true" dangerouslySetInnerHTML={{ __html: currentSong.title }} />
               </div>
             </div>
-            <p className="muted-text truncate text-sm">
+            <p className="muted-text truncate text-xs">
               {currentSong.artist}
               {isSoundCloud && (
                 <span className="ml-2 inline-flex items-center rounded bg-orange-500/15 px-1.5 py-0.5 text-[10px] font-bold text-orange-400">
@@ -401,8 +414,40 @@ export default function Player() {
           </div>
         </button>
 
-        <div className="flex w-2/4 flex-col items-center justify-center md:w-1/3">
-          <div className="mb-2 flex items-center justify-center gap-4">
+        {/* Center: Controls */}
+        <div className="player-controls">
+          <div className="player-controls-buttons">
+            <button
+              type="button"
+              aria-label="Shuffle"
+              className="player-control-btn muted-text"
+            >
+              <Shuffle size={16} />
+            </button>
+            <button
+              type="button"
+              aria-label={t.player.previous}
+              onClick={playPrev}
+              className="player-control-btn muted-text"
+            >
+              <SkipBack size={18} />
+            </button>
+            <button
+              type="button"
+              aria-label={isPlaying ? t.player.pause : t.player.play}
+              onClick={togglePlay}
+              className="player-play-btn"
+            >
+              {isPlaying ? <Pause size={18} /> : <Play size={18} className="ml-0.5" />}
+            </button>
+            <button
+              type="button"
+              aria-label={t.player.next}
+              onClick={playNext}
+              className="player-control-btn muted-text"
+            >
+              <SkipForward size={18} />
+            </button>
             <button
               type="button"
               aria-label={
@@ -410,54 +455,26 @@ export default function Player() {
                 : repeatMode === 'all' ? t.player.repeatAll
                 : t.player.repeatOne
               }
-              title={
-                repeatMode === 'off' ? t.player.repeatOff
-                : repeatMode === 'all' ? t.player.repeatAll
-                : t.player.repeatOne
-              }
               onClick={cycleRepeatMode}
-              className={`relative transition ${
+              className={`player-control-btn relative ${
                 repeatMode === 'off'
-                  ? 'text-[var(--muted-text)] hover:text-[var(--app-text)]'
-                  : 'text-pink-400 hover:text-pink-300'
+                  ? 'muted-text'
+                  : 'text-pink-400'
               }`}
             >
-              {repeatMode === 'one' ? <Repeat1 size={18} /> : <Repeat size={18} />}
+              {repeatMode === 'one' ? <Repeat1 size={16} /> : <Repeat size={16} />}
               {repeatMode !== 'off' && (
-                <span className="absolute -right-1 -top-1 flex h-2 w-2">
+                <span className="absolute -right-0.5 -top-0.5 flex h-1.5 w-1.5">
                   <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-pink-400 opacity-75" />
-                  <span className="relative inline-flex h-2 w-2 rounded-full bg-pink-500" />
+                  <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-pink-500" />
                 </span>
               )}
             </button>
-            <button
-              type="button"
-              aria-label={t.player.previous}
-              onClick={playPrev}
-              className="muted-text transition hover:text-[var(--app-text)]"
-            >
-              <SkipBack size={20} />
-            </button>
-            <button
-              type="button"
-              aria-label={isPlaying ? t.player.pause : t.player.play}
-              onClick={togglePlay}
-              className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-black transition hover:scale-105"
-            >
-              {isPlaying ? <Pause size={20} /> : <Play size={20} className="ml-1" />}
-            </button>
-            <button
-              type="button"
-              aria-label={t.player.next}
-              onClick={playNext}
-              className="muted-text transition hover:text-[var(--app-text)]"
-            >
-              <SkipForward size={20} />
-            </button>
           </div>
 
-          <div className="flex w-full items-center gap-3">
-            <span className="muted-text w-8 text-right font-mono text-[11px]">{formatTime(currentTime)}</span>
+          {/* Progress bar */}
+          <div className="player-progress">
+            <span className="player-time">{formatTime(currentTime)}</span>
             <input
               type="range"
               min={0}
@@ -473,25 +490,48 @@ export default function Player() {
                   ytPlayerRef.current?.seekTo?.(value, true);
                 }
               }}
-              className="music-range h-1 w-full cursor-pointer appearance-none rounded-lg bg-slate-500/40"
+              className="music-range player-range"
             />
-            <span className="muted-text w-8 text-left font-mono text-[11px]">{formatTime(duration)}</span>
+            <span className="player-time">{formatTime(duration)}</span>
           </div>
         </div>
 
-        <div className="hidden w-1/4 items-center justify-end gap-3 md:flex md:w-1/3">
+        {/* Right: Extra actions */}
+        <div className="player-right-actions">
+          <button
+            type="button"
+            aria-label="Favorite"
+            className="player-control-btn muted-text"
+          >
+            <Heart size={18} />
+          </button>
           <button
             type="button"
             aria-label={t.lyrics.open}
             onClick={() => setIsLyricsOpen((value) => !value)}
-            className={`pill-button gap-2 px-3 py-1.5 text-xs font-semibold ${isLyricsOpen ? 'border-pink-400 text-pink-400' : 'text-[var(--muted-text)]'}`}
+            className={`player-control-btn ${isLyricsOpen ? 'text-pink-400' : 'muted-text'}`}
           >
-            <FileText size={15} />
-            {t.lyrics.title}
+            <FileText size={18} />
           </button>
-          <span className="rounded-full border border-[var(--border)] px-3 py-1 text-xs font-semibold text-[var(--muted-text)]">
-            {isSoundCloud ? 'SC' : `${playbackRate}x`} · {volume}%
-          </span>
+          <div className="player-volume-group">
+            <Volume2 size={16} className="muted-text flex-shrink-0" />
+            <input
+              type="range"
+              min={0}
+              max={100}
+              value={volume}
+              onChange={(event) => useSettingsStore.getState().setVolume(event.target.value)}
+              className="music-range player-volume-range"
+            />
+          </div>
+          <button
+            type="button"
+            aria-label="Close player"
+            onClick={handleCloseSong}
+            className="player-control-btn muted-text"
+          >
+            <X size={18} />
+          </button>
         </div>
       </div>
     </div>

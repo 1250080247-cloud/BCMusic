@@ -13,7 +13,7 @@ export default function HistoryView({ songs }) {
   const latestListen = songs[0]?.listenedAt ? formatDateTime(songs[0].listenedAt, language) : t.common.unknownDate;
 
   return (
-    <main className="app-shell relative pb-44">
+    <main className="app-shell relative pb-8">
       <header className="px-4 pt-10 sm:px-8 sm:pt-12">
         <div className="mx-auto max-w-screen-xl">
           <div className="relative flex flex-col items-center text-center">

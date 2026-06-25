@@ -33,7 +33,7 @@ export default function SettingsPanel() {
   }, [isOpen]);
 
   return (
-    <div className="relative z-[130]">
+    <div className={`relative ${isOpen ? 'z-[130]' : 'z-10'}`}>
       <button
         type="button"
         aria-label={t.common.settings}

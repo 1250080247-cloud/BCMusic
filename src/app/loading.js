@@ -1,6 +1,6 @@
 export default function Loading() {
   return (
-    <main className="app-shell relative pb-44">
+    <main className="app-shell relative pb-8">
       {/* Header Skeleton */}
       <header className="mx-auto max-w-4xl px-4 pb-6 pt-10 sm:px-8">
         {/* Logo */}

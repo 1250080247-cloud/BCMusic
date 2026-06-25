@@ -17,6 +17,16 @@ const nextConfig = {
         hostname: "i1.sndcdn.com",
         pathname: "/**",
       },
+      {
+        protocol: "https",
+        hostname: "soundcloud.com",
+        pathname: "/**",
+      },
+      {
+        protocol: "https",
+        hostname: "*.sndcdn.com",
+        pathname: "/**",
+      },
     ],
   },
 };

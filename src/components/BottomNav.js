@@ -78,7 +78,7 @@ export default function BottomNav() {
             ? 'pointer-events-auto translate-y-0 opacity-100'
             : 'pointer-events-none translate-y-4 opacity-0'
         }`}
-        style={{ bottom: currentSong ? '152px' : '62px', width: '92%', maxWidth: '480px' }}
+        style={{ bottom: currentSong ? '180px' : '62px', width: '92%', maxWidth: '480px' }}
       >
         <form
           onSubmit={handleSubmit}
@@ -115,7 +115,10 @@ export default function BottomNav() {
       </div>
 
       {/* Bottom Nav Bar */}
-      <nav className="bottom-nav fixed bottom-0 left-0 right-0 z-40">
+      <nav
+        className="bottom-nav fixed left-0 right-0 z-40"
+        style={{ bottom: currentSong ? '64px' : '0' }}
+      >
         <div className="mx-auto flex max-w-screen-xl items-center justify-around">
           {/* Home */}
           <Link
@@ -126,17 +129,14 @@ export default function BottomNav() {
             <span className="text-[11px] font-semibold">{t.bottomNav.home}</span>
           </Link>
 
-          {/* Search Toggle */}
-          <button
-            type="button"
-            onClick={toggleSearch}
-            className={`bottom-nav-item ${isSearchOpen ? 'is-active' : ''}`}
+          {/* Search Link */}
+          <Link
+            href="/search"
+            className={`bottom-nav-item ${pathname === '/search' ? 'is-active' : ''}`}
           >
-            {isSearchOpen ? <X size={22} strokeWidth={2.2} /> : <Search size={22} strokeWidth={1.6} />}
-            <span className="text-[11px] font-semibold">
-              {isSearchOpen ? t.bottomNav.close : t.bottomNav.search}
-            </span>
-          </button>
+            <Search size={22} strokeWidth={pathname === '/search' ? 2.2 : 1.6} />
+            <span className="text-[11px] font-semibold">{t.bottomNav.search}</span>
+          </Link>
 
           {/* Library */}
           <Link

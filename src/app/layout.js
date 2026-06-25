@@ -22,7 +22,7 @@ export default function RootLayout({ children }) {
   return (
     <html lang="vi" suppressHydrationWarning>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} min-h-full flex flex-col antialiased`}
+        className={`${geistSans.variable} ${geistMono.variable} min-h-full antialiased`}
         suppressHydrationWarning
       >
         <SettingsBridge />
