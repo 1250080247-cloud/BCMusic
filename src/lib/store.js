@@ -4,8 +4,12 @@ import { persist } from 'zustand/middleware';
 export const useMusicStore = create((set, get) => ({
   currentSong: null,
   playlist: [],
+  favorites: [],
   setCurrentSong: (song) => set({ currentSong: song }),
   setPlaylist: (list) => set({ playlist: list }),
+  setFavorites: (list) => set({ favorites: list }),
+  addFavorite: (song) => set((state) => ({ favorites: [song, ...state.favorites] })),
+  removeFavorite: (songId) => set((state) => ({ favorites: state.favorites.filter((s) => s.id !== songId) })),
 
   viewingSong: null,
   setViewingSong: (song) => set({ viewingSong: song }),

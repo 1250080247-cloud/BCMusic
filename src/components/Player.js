@@ -5,9 +5,11 @@ import Image from 'next/image';
 import { useEffect, useRef, useState, useCallback } from 'react';
 import YouTube from 'react-youtube';
 import { getDictionary } from '@/lib/i18n';
+import { useSession } from 'next-auth/react';
 import { useMusicStore, useSettingsStore } from '@/lib/store';
 
 export default function Player() {
+  const { data: session } = useSession();
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLyricsOpen, setIsLyricsOpen] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -18,11 +20,63 @@ export default function Player() {
   const lastSongIdRef = useRef(null);
   const scApiLoadedRef = useRef(false);
   const handleTrackEndRef = useRef(null);
-  const { currentSong, playlist, setCurrentSong, repeatMode, cycleRepeatMode, toggleNowPlaying, setNowPlayingOpen } = useMusicStore();
+  const {
+    currentSong,
+    playlist,
+    setCurrentSong,
+    repeatMode,
+    cycleRepeatMode,
+    toggleNowPlaying,
+    setNowPlayingOpen,
+    favorites,
+    addFavorite,
+    removeFavorite
+  } = useMusicStore();
   const language = useSettingsStore((state) => state.language);
   const volume = useSettingsStore((state) => state.volume);
   const playbackRate = useSettingsStore((state) => state.playbackRate);
   const t = getDictionary(language);
+
+  const isFavorited = currentSong && favorites?.some((s) => s.id === currentSong.id);
+
+  const handleFavoriteToggle = async () => {
+    if (!currentSong) return;
+    if (!session?.user?.id) {
+      alert(language === 'vi' ? 'Vui lòng đăng nhập để lưu bài hát yêu thích!' : 'Please sign in to favorite songs!');
+      return;
+    }
+
+    const userId = session.user.id;
+    if (isFavorited) {
+      try {
+        const res = await fetch(`/api/favorites?userId=${userId}&songId=${currentSong.id}`, {
+          method: 'DELETE',
+        });
+        if (res.ok) {
+          removeFavorite(currentSong.id);
+        }
+      } catch (err) {
+        console.error('Error removing favorite:', err);
+      }
+    } else {
+      try {
+        const res = await fetch('/api/favorites', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId,
+            song: currentSong,
+          }),
+        });
+        if (res.ok) {
+          addFavorite(currentSong);
+        }
+      } catch (err) {
+        console.error('Error adding favorite:', err);
+      }
+    }
+  };
+
 
   const isSoundCloud = currentSong?.source === 'soundcloud';
 
@@ -501,9 +555,10 @@ export default function Player() {
           <button
             type="button"
             aria-label="Favorite"
-            className="player-control-btn muted-text"
+            onClick={handleFavoriteToggle}
+            className={`player-control-btn ${isFavorited ? 'text-pink-500 hover:text-pink-600' : 'muted-text'}`}
           >
-            <Heart size={18} />
+            <Heart size={18} fill={isFavorited ? 'currentColor' : 'none'} />
           </button>
           <button
             type="button"

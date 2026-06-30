@@ -1,6 +1,7 @@
 import { Geist, Geist_Mono } from "next/font/google";
 import PersistentShell from "@/components/PersistentShell";
 import SettingsBridge from "@/components/SettingsBridge";
+import Providers from "@/components/Providers";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -25,11 +26,14 @@ export default function RootLayout({ children }) {
         className={`${geistSans.variable} ${geistMono.variable} min-h-full antialiased`}
         suppressHydrationWarning
       >
-        <SettingsBridge />
-        <PersistentShell>
-          {children}
-        </PersistentShell>
+        <Providers>
+          <SettingsBridge />
+          <PersistentShell>
+            {children}
+          </PersistentShell>
+        </Providers>
       </body>
     </html>
   );
 }
+

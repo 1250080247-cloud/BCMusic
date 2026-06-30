@@ -1,10 +1,10 @@
 import mongoose from 'mongoose';
 
-const HistorySchema = new mongoose.Schema({
+const FavoriteSchema = new mongoose.Schema({
   userId: {
     type: String,
+    required: true,
     index: true,
-    default: null,
   },
   songId: {
     type: String,
@@ -23,17 +23,20 @@ const HistorySchema = new mongoose.Schema({
   publishedAt: {
     type: String,
   },
-  lyrics: {
+  embedUrl: {
     type: String,
   },
   source: {
     type: String,
     default: 'youtube',
   },
-  listenedAt: {
+  favoritedAt: {
     type: Date,
     default: Date.now,
   },
 });
 
-export default mongoose.models.History || mongoose.model('History', HistorySchema);
+// Đảm bảo không trùng lặp bài hát yêu thích của cùng một user
+FavoriteSchema.index({ userId: 1, songId: 1 }, { unique: true });
+
+export default mongoose.models.Favorite || mongoose.model('Favorite', FavoriteSchema);

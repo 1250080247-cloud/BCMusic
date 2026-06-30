@@ -49,6 +49,7 @@ export default function RankingSection({ songs }) {
                   alt=""
                   fill
                   sizes="180px"
+                  priority={index < 3}
                   className="object-cover transition-transform duration-300 group-hover:scale-110"
                 />
               )}

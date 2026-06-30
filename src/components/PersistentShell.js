@@ -1,25 +1,33 @@
 "use client";
 
-import { Suspense } from 'react';
+import { Suspense, useEffect } from 'react';
+import { useSession } from 'next-auth/react';
+import { useMusicStore } from '@/lib/store';
 import BottomNav from '@/components/BottomNav';
 import NowPlayingPanel from '@/components/NowPlayingPanel';
 import Player from '@/components/Player';
 import Sidebar from '@/components/Sidebar';
 import SongModal from '@/components/SongModal';
 
-/**
- * Persistent UI shell that wraps the entire app.
- * Player, SongModal, Sidebar, NowPlayingPanel, and BottomNav live here so they
- * are never unmounted during page navigations — keeping
- * audio playback continuous across routes.
- *
- * All overlay elements (Sidebar, Player, NowPlayingPanel, BottomNav) use
- * position: fixed, so they do NOT participate in the document flow.
- * The main content area gets margin-left via CSS when sidebar is visible.
- *
- * BottomNav uses useSearchParams() which requires a Suspense boundary.
- */
 export default function PersistentShell({ children }) {
+  const { data: session } = useSession();
+  const setFavorites = useMusicStore((state) => state.setFavorites);
+
+  useEffect(() => {
+    if (session?.user?.id) {
+      fetch(`/api/favorites?userId=${session.user.id}`)
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.success) {
+            setFavorites(data.data || []);
+          }
+        })
+        .catch((err) => console.error('Error fetching favorites:', err));
+    } else {
+      setFavorites([]);
+    }
+  }, [session, setFavorites]);
+
   return (
     <>
       <Sidebar />

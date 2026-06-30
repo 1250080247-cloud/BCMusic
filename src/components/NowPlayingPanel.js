@@ -2,15 +2,63 @@
 
 import { Heart, MoreVertical, X } from 'lucide-react';
 import Image from 'next/image';
+import { useSession } from 'next-auth/react';
 import { getDictionary } from '@/lib/i18n';
 import { useMusicStore, useSettingsStore } from '@/lib/store';
 
 export default function NowPlayingPanel() {
-  const { currentSong, nowPlayingOpen, setNowPlayingOpen } = useMusicStore();
+  const { data: session } = useSession();
+  const {
+    currentSong,
+    nowPlayingOpen,
+    setNowPlayingOpen,
+    favorites,
+    addFavorite,
+    removeFavorite,
+  } = useMusicStore();
   const language = useSettingsStore((state) => state.language);
   const t = getDictionary(language);
 
   if (!currentSong || !nowPlayingOpen) return null;
+
+  const isFavorited = favorites?.some((s) => s.id === currentSong.id);
+
+  const handleFavoriteToggle = async () => {
+    if (!session?.user?.id) {
+      alert(language === 'vi' ? 'Vui lòng đăng nhập để lưu bài hát yêu thích!' : 'Please sign in to favorite songs!');
+      return;
+    }
+
+    const userId = session.user.id;
+    if (isFavorited) {
+      try {
+        const res = await fetch(`/api/favorites?userId=${userId}&songId=${currentSong.id}`, {
+          method: 'DELETE',
+        });
+        if (res.ok) {
+          removeFavorite(currentSong.id);
+        }
+      } catch (err) {
+        console.error('Error removing favorite:', err);
+      }
+    } else {
+      try {
+        const res = await fetch('/api/favorites', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId,
+            song: currentSong,
+          }),
+        });
+        if (res.ok) {
+          addFavorite(currentSong);
+        }
+      } catch (err) {
+        console.error('Error adding favorite:', err);
+      }
+    }
+  };
 
   return (
     <aside className="now-playing-panel">
@@ -78,9 +126,10 @@ export default function NowPlayingPanel() {
         <button
           type="button"
           aria-label="Favorite"
-          className="now-playing-icon-btn now-playing-fav-btn"
+          onClick={handleFavoriteToggle}
+          className={`now-playing-icon-btn now-playing-fav-btn ${isFavorited ? 'text-pink-500 hover:text-pink-600' : ''}`}
         >
-          <Heart size={22} />
+          <Heart size={22} fill={isFavorited ? 'currentColor' : 'none'} />
         </button>
       </div>
     </aside>

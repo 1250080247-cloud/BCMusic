@@ -3,21 +3,27 @@
 import { Check, ExternalLink, FileText, ListPlus, Play, Radio, X } from 'lucide-react';
 import Image from 'next/image';
 import { useCallback, useEffect, useState } from 'react';
+import { useSession } from 'next-auth/react';
 import { formatDate, formatDateTime, getDictionary } from '@/lib/i18n';
 import { useMusicStore, useSettingsStore, useUserStore } from '@/lib/store';
 
 export default function SongModal() {
+  const { data: session } = useSession();
   const { viewingSong, setViewingSong, setCurrentSong } = useMusicStore();
   const language = useSettingsStore((state) => state.language);
   const getUserId = useUserStore((state) => state.getUserId);
   const t = getDictionary(language);
+
+  const getEffectiveUserId = useCallback(() => {
+    return session?.user?.id || getUserId();
+  }, [session, getUserId]);
 
   const [showPlaylistMenu, setShowPlaylistMenu] = useState(false);
   const [playlists, setPlaylists] = useState([]);
   const [feedback, setFeedback] = useState(null);
 
   const fetchPlaylists = useCallback(async () => {
-    const userId = getUserId();
+    const userId = getEffectiveUserId();
     try {
       const res = await fetch(`/api/playlist?userId=${encodeURIComponent(userId)}`);
       const data = await res.json();
@@ -25,7 +31,7 @@ export default function SongModal() {
     } catch (error) {
       console.error('Failed to fetch playlists:', error);
     }
-  }, [getUserId]);
+  }, [getEffectiveUserId]);
 
   useEffect(() => {
     if (!showPlaylistMenu) return;
@@ -33,7 +39,7 @@ export default function SongModal() {
     let cancelled = false;
 
     async function load() {
-      const userId = getUserId();
+      const userId = getEffectiveUserId();
       try {
         const res = await fetch(`/api/playlist?userId=${encodeURIComponent(userId)}`);
         const data = await res.json();
@@ -45,10 +51,10 @@ export default function SongModal() {
 
     load();
     return () => { cancelled = true; };
-  }, [showPlaylistMenu, getUserId]);
+  }, [showPlaylistMenu, getEffectiveUserId]);
 
   const handleAddToPlaylist = async (playlistId, playlistName) => {
-    const userId = getUserId();
+    const userId = getEffectiveUserId();
     try {
       const res = await fetch('/api/playlist/song', {
         method: 'POST',

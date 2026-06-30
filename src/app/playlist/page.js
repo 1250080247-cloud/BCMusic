@@ -3,15 +3,21 @@
 import { ChevronDown, ChevronUp, ListMusic, Music, Play, Plus, Trash2, X } from 'lucide-react';
 import Image from 'next/image';
 import { useCallback, useEffect, useState } from 'react';
+import { useSession } from 'next-auth/react';
 import SettingsPanel from '@/components/SettingsPanel';
 import { formatDateTime, getDictionary } from '@/lib/i18n';
 import { useMusicStore, useSettingsStore, useUserStore } from '@/lib/store';
 
 export default function PlaylistPage() {
+  const { data: session } = useSession();
   const language = useSettingsStore((state) => state.language);
   const getUserId = useUserStore((state) => state.getUserId);
   const { setCurrentSong, setViewingSong, setPlaylist } = useMusicStore();
   const t = getDictionary(language);
+
+  const getEffectiveUserId = useCallback(() => {
+    return session?.user?.id || getUserId();
+  }, [session, getUserId]);
 
   const [playlists, setPlaylists] = useState([]);
   const [newName, setNewName] = useState('');
@@ -19,7 +25,7 @@ export default function PlaylistPage() {
   const [expandedId, setExpandedId] = useState(null);
 
   const fetchPlaylists = useCallback(async () => {
-    const userId = getUserId();
+    const userId = getEffectiveUserId();
     try {
       const res = await fetch(`/api/playlist?userId=${encodeURIComponent(userId)}`);
       const data = await res.json();
@@ -29,13 +35,13 @@ export default function PlaylistPage() {
     } finally {
       setLoading(false);
     }
-  }, [getUserId]);
+  }, [getEffectiveUserId]);
 
   useEffect(() => {
     let cancelled = false;
 
     async function load() {
-      const userId = getUserId();
+      const userId = getEffectiveUserId();
       try {
         const res = await fetch(`/api/playlist?userId=${encodeURIComponent(userId)}`);
         const data = await res.json();
@@ -49,14 +55,14 @@ export default function PlaylistPage() {
 
     load();
     return () => { cancelled = true; };
-  }, [getUserId]);
+  }, [getEffectiveUserId]);
 
   const handleCreate = async (event) => {
     event.preventDefault();
     const trimmed = newName.trim();
     if (!trimmed) return;
 
-    const userId = getUserId();
+    const userId = getEffectiveUserId();
     try {
       const res = await fetch('/api/playlist', {
         method: 'POST',
@@ -74,7 +80,7 @@ export default function PlaylistPage() {
   };
 
   const handleDelete = async (playlistId) => {
-    const userId = getUserId();
+    const userId = getEffectiveUserId();
     try {
       const res = await fetch('/api/playlist', {
         method: 'DELETE',
@@ -92,7 +98,7 @@ export default function PlaylistPage() {
   };
 
   const handleRemoveSong = async (playlistId, songId) => {
-    const userId = getUserId();
+    const userId = getEffectiveUserId();
     try {
       const res = await fetch('/api/playlist/song', {
         method: 'DELETE',

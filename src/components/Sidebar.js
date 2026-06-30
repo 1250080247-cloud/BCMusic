@@ -1,16 +1,18 @@
 "use client";
 
-import { Home, Library, Search, CloudDownload } from 'lucide-react';
+import { Home, Library, Search, CloudDownload, ListMusic } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { getDictionary } from '@/lib/i18n';
 import { useSettingsStore } from '@/lib/store';
+import AuthModal from '@/components/AuthModal';
 
 const sidebarItems = [
   { key: 'home', href: '/', icon: Home },
   { key: 'search', href: '/search', icon: Search },
   { key: 'library', href: '/history', icon: Library },
+  { key: 'playlist', href: '/playlist', icon: ListMusic },
   { key: 'soundcloud', href: '/soundcloud', icon: CloudDownload },
 ];
 
@@ -57,6 +59,12 @@ export default function Sidebar() {
           );
         })}
       </div>
+
+      {/* Auth */}
+      <div className="sidebar-auth">
+        <AuthModal />
+      </div>
     </nav>
   );
 }
+

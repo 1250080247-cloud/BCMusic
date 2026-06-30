@@ -86,6 +86,7 @@ export const dictionaries = {
       home: 'Trang chủ',
       search: 'Tìm kiếm',
       library: 'Thư viện',
+      playlist: 'Playlist',
       soundcloud: 'SoundCloud',
     },
     searchPage: {
@@ -257,6 +258,7 @@ export const dictionaries = {
       home: 'Home',
       search: 'Search',
       library: 'Library',
+      playlist: 'Playlist',
       soundcloud: 'SoundCloud',
     },
     searchPage: {
