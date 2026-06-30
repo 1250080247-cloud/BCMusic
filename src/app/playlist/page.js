@@ -5,6 +5,7 @@ import Image from 'next/image';
 import { useCallback, useEffect, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import SettingsPanel from '@/components/SettingsPanel';
+import AuthModal from '@/components/AuthModal';
 import { formatDateTime, getDictionary } from '@/lib/i18n';
 import { useMusicStore, useSettingsStore, useUserStore } from '@/lib/store';
 
@@ -130,7 +131,10 @@ export default function PlaylistPage() {
       <header className="px-4 pt-10 sm:px-8 sm:pt-12">
         <div className="mx-auto max-w-screen-xl">
           <div className="relative flex flex-col items-center text-center">
-            <div className="absolute right-0 top-0">
+            <div className="absolute right-0 top-0 flex items-center gap-2">
+              <div className="md:hidden header-auth-wrapper">
+                <AuthModal />
+              </div>
               <SettingsPanel />
             </div>
 

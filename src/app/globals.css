@@ -1459,3 +1459,32 @@ select {
   border: 2px solid var(--accent-pink);
   box-shadow: 0 0 12px rgba(236, 72, 153, 0.3);
 }
+
+/* ── Mobile-Only Header Auth Override ── */
+.header-auth-wrapper {
+  display: block;
+}
+
+@media (min-width: 768px) {
+  .header-auth-wrapper {
+    display: none !important;
+  }
+}
+
+.header-auth-wrapper .auth-user-info {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+  width: auto;
+}
+
+.header-auth-wrapper .auth-icon-buttons {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+  width: auto;
+}
+
+.header-auth-wrapper .auth-user-name {
+  display: none;
+}

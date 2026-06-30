@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { Clock, Settings } from 'lucide-react';
 import CategoryScroller from '@/components/CategoryScroller';
 import SettingsPanel from '@/components/SettingsPanel';
+import AuthModal from '@/components/AuthModal';
 import { getDictionary } from '@/lib/i18n';
 import { useSettingsStore } from '@/lib/store';
 
@@ -55,6 +56,9 @@ export default function HomeHeader({ categories, currentQuery, currentSearch }) 
           >
             <Clock size={20} />
           </Link>
+          <div className="md:hidden header-auth-wrapper">
+            <AuthModal />
+          </div>
           <SettingsPanel />
         </div>
       </div>
