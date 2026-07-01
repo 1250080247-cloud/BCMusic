@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { signIn, signOut, useSession } from 'next-auth/react';
 import Link from 'next/link';
-import { LogIn, LogOut, UserPlus, X, User, Music2 } from 'lucide-react';
+import { Eye, EyeOff, LogIn, LogOut, UserPlus, X, User, Music2 } from 'lucide-react';
 
 /* ── Google icon SVG ──────────────────────────────── */
 function GoogleIcon() {
@@ -24,6 +24,7 @@ function AuthModalDialog({ mode, setMode, onClose }) {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   const isLogin = mode === 'login';
 
@@ -164,16 +165,27 @@ function AuthModalDialog({ mode, setMode, onClose }) {
 
           <div className="auth-field">
             <label htmlFor="password">Mật khẩu</label>
-            <input
-              id="password"
-              name="password"
-              type="password"
-              value={form.password}
-              onChange={handleChange}
-              placeholder={isLogin ? '••••••••' : 'Ít nhất 6 ký tự'}
-              required
-              autoComplete={isLogin ? 'current-password' : 'new-password'}
-            />
+            <div className="auth-password-wrapper">
+              <input
+                id="password"
+                name="password"
+                type={showPassword ? 'text' : 'password'}
+                value={form.password}
+                onChange={handleChange}
+                placeholder={isLogin ? '••••••••' : 'Ít nhất 6 ký tự'}
+                required
+                autoComplete={isLogin ? 'current-password' : 'new-password'}
+              />
+              <button
+                type="button"
+                className="auth-password-toggle"
+                onClick={() => setShowPassword((v) => !v)}
+                aria-label={showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+                tabIndex={-1}
+              >
+                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </div>
           </div>
 
           {error && <div className="auth-error" role="alert">{error}</div>}

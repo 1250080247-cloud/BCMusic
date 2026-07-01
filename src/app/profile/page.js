@@ -15,7 +15,7 @@ export default function ProfilePage() {
   const [updating, setUpdating] = useState(false);
   const [error, setError] = useState('');
 
-  const { favorites, setCurrentSong, setPlaylist } = useMusicStore();
+  const { favorites, setCurrentSong, setPlaylist, setViewingSong } = useMusicStore();
 
   useEffect(() => {
     if (session?.user) {
@@ -115,9 +115,16 @@ export default function ProfilePage() {
     }
   };
 
+  const openSong = (song) => {
+    // Single click: mở modal thông tin bài hát (giống trang chủ)
+    setViewingSong(song);
+    setPlaylist(favorites);
+  };
+
   const playSong = (song) => {
+    // Double click: phát ngay
     setCurrentSong(song);
-    setPlaylist([song]);
+    setPlaylist(favorites);
   };
 
   return (
@@ -252,8 +259,10 @@ export default function ProfilePage() {
                 {favorites.map((song, idx) => (
                   <div
                     key={song.id + idx}
-                    onClick={() => playSong(song)}
+                    onClick={() => openSong(song)}
+                    onDoubleClick={() => playSong(song)}
                     className="flex items-center justify-between p-2 rounded-xl hover:bg-[var(--surface-hover)] transition cursor-pointer group"
+                    title="Click để xem chi tiết · Double click để phát ngay"
                   >
                     <div className="flex items-center gap-3 min-w-0">
                       {/* Thumbnail */}

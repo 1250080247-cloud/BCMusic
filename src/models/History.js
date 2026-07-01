@@ -33,7 +33,13 @@ const HistorySchema = new mongoose.Schema({
   listenedAt: {
     type: Date,
     default: Date.now,
+    index: true,
   },
 });
 
+// Compound unique index: mỗi user chỉ có 1 document cho mỗi bài hát
+// → đảm bảo upsert không tạo trùng, chỉ cập nhật listenedAt
+HistorySchema.index({ userId: 1, songId: 1 }, { unique: true });
+
 export default mongoose.models.History || mongoose.model('History', HistorySchema);
+

@@ -45,18 +45,30 @@ export async function POST(request) {
     }
 
     await dbConnect();
-    const newHistory = await History.create({
-      userId: session?.user?.id || null,
-      songId: body.id,
-      title: body.title,
-      thumbnail: body.thumbnail,
-      artist: body.artist,
-      publishedAt: body.publishedAt,
-      lyrics: body.lyrics,
-      source: body.source || 'youtube',
-    });
 
-    return NextResponse.json({ success: true, data: newHistory });
+    const userId = session?.user?.id || null;
+
+    // Upsert theo (userId, songId):
+    //  - Nếu bài đã có trong history → chỉ cập nhật listenedAt (đẩy lên đầu danh sách)
+    //  - Nếu chưa có → tạo document mới
+    // => Không bao giờ tạo trùng lặp
+    const doc = await History.findOneAndUpdate(
+      { userId, songId: body.id },
+      {
+        $set: {
+          title: body.title,
+          thumbnail: body.thumbnail,
+          artist: body.artist,
+          publishedAt: body.publishedAt,
+          lyrics: body.lyrics,
+          source: body.source || 'youtube',
+          listenedAt: new Date(),
+        },
+      },
+      { upsert: true, new: true }
+    );
+
+    return NextResponse.json({ success: true, data: doc });
   } catch (error) {
     console.error('History save error:', error);
     return NextResponse.json({ success: false, message: error.message }, { status: 500 });

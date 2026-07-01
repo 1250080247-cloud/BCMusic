@@ -1,4 +1,5 @@
 import DualViewSection from "@/components/DualViewSection";
+import GenreExplorer from "@/components/GenreExplorer";
 import HomeEmptyState from "@/components/HomeEmptyState";
 import HomeHeader from "@/components/HomeHeader";
 import PaginationControls from "@/components/PaginationControls";
@@ -117,6 +118,9 @@ export default async function Home({ searchParams }) {
           </>
         )}
       </section>
+
+      {/* Genre Explorer + Footer — always visible */}
+      <GenreExplorer />
     </main>
   );
 }

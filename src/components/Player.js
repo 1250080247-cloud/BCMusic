@@ -101,6 +101,14 @@ export default function Player() {
     }).catch((error) => console.log('Unable to save listening history', error));
   }, [currentSong]);
 
+  // Broadcast play-state to NowPlayingPanel visualizer
+  useEffect(() => {
+    window.dispatchEvent(
+      new CustomEvent('bcmusic:playstate', { detail: { isPlaying } })
+    );
+  }, [isPlaying]);
+
+
   // ─── YouTube: Volume sync ──────────────────────────────
   useEffect(() => {
     if (isSoundCloud) return;
