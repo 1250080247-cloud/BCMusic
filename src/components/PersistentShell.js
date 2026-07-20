@@ -12,6 +12,7 @@ import SongModal from '@/components/SongModal';
 export default function PersistentShell({ children }) {
   const { data: session } = useSession();
   const setFavorites = useMusicStore((state) => state.setFavorites);
+  const nowPlayingOpen = useMusicStore((state) => state.nowPlayingOpen);
 
   useEffect(() => {
     if (session?.user?.id) {
@@ -31,7 +32,7 @@ export default function PersistentShell({ children }) {
   return (
     <>
       <Sidebar />
-      <div className="app-layout-main">
+      <div className={`app-layout-main${nowPlayingOpen ? ' app-layout-main--np-open' : ''}`}>
         {children}
       </div>
       <NowPlayingPanel />

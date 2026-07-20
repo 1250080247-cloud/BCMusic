@@ -101,12 +101,60 @@ export default function Player() {
     }).catch((error) => console.log('Unable to save listening history', error));
   }, [currentSong]);
 
-  // Broadcast play-state to NowPlayingPanel visualizer
+  // Broadcast play-state to NowPlayingPanel
   useEffect(() => {
     window.dispatchEvent(
       new CustomEvent('bcmusic:playstate', { detail: { isPlaying } })
     );
   }, [isPlaying]);
+
+  // Broadcast time updates to NowPlayingPanel
+  useEffect(() => {
+    window.dispatchEvent(
+      new CustomEvent('bcmusic:timeupdate', { detail: { currentTime, duration } })
+    );
+  }, [currentTime, duration]);
+
+  // Listen for seek commands from NowPlayingPanel
+  useEffect(() => {
+    const handleSeekTo = (e) => {
+      const time = e.detail?.time;
+      if (time === undefined) return;
+      if (isSoundCloud && scWidgetRef.current) {
+        scWidgetRef.current.seekTo(time * 1000);
+      } else if (ytPlayerRef.current?.seekTo) {
+        ytPlayerRef.current.seekTo(time, true);
+      }
+      setCurrentTime(time);
+    };
+    const handleTogglePlay = () => {
+      if (isSoundCloud) {
+        if (!scWidgetRef.current) return;
+        try {
+          scWidgetRef.current.isPaused((paused) => {
+            if (paused) scWidgetRef.current.play();
+            else scWidgetRef.current.pause();
+          });
+        } catch {
+          if (isPlaying) scWidgetRef.current.pause();
+          else scWidgetRef.current.play();
+          setIsPlaying(!isPlaying);
+        }
+      } else {
+        if (!ytPlayerRef.current || typeof ytPlayerRef.current.playVideo !== 'function') return;
+        if (isPlaying) ytPlayerRef.current.pauseVideo();
+        else ytPlayerRef.current.playVideo();
+        setIsPlaying(!isPlaying);
+      }
+    };
+    window.addEventListener('bcmusic:seekto', handleSeekTo);
+    window.addEventListener('bcmusic:toggleplay', handleTogglePlay);
+    return () => {
+      window.removeEventListener('bcmusic:seekto', handleSeekTo);
+      window.removeEventListener('bcmusic:toggleplay', handleTogglePlay);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSoundCloud, isPlaying]);
 
 
   // ─── YouTube: Volume sync ──────────────────────────────
