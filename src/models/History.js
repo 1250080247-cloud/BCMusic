@@ -26,6 +26,12 @@ const HistorySchema = new mongoose.Schema({
   lyrics: {
     type: String,
   },
+  embedUrl: {
+    type: String,
+  },
+  sourceUrl: {
+    type: String,
+  },
   source: {
     type: String,
     default: 'youtube',

@@ -1,3 +1,4 @@
+import { getRequestUserId } from '@/lib/request-user';
 import dbConnect from '@/lib/mongodb';
 import Playlist from '@/models/Playlist';
 import { NextResponse } from 'next/server';
@@ -5,17 +6,21 @@ import { NextResponse } from 'next/server';
 // POST /api/playlist/song — add a song to a playlist
 export async function POST(request) {
   try {
-    await dbConnect();
+    const userId = await getRequestUserId({ allowGuest: true });
+    if (!userId) {
+      return NextResponse.json({ success: false, message: 'Chưa đăng nhập.' }, { status: 401 });
+    }
     const body = await request.json();
 
-    if (!body?.userId || !body?.playlistId || !body?.song?.id || !body?.song?.title) {
+    if (typeof body?.playlistId !== 'string' || !/^[a-f0-9]{24}$/i.test(body.playlistId) || typeof body?.song?.id !== 'string' || typeof body?.song?.title !== 'string' || !body.song.id || !body.song.title.trim()) {
       return NextResponse.json(
         { success: false, message: 'Missing required fields.' },
         { status: 400 }
       );
     }
 
-    const playlist = await Playlist.findOne({ _id: body.playlistId, userId: body.userId });
+    await dbConnect();
+    const playlist = await Playlist.findOne({ _id: body.playlistId, userId });
 
     if (!playlist) {
       return NextResponse.json(
@@ -56,18 +61,22 @@ export async function POST(request) {
 // DELETE /api/playlist/song — remove a song from a playlist
 export async function DELETE(request) {
   try {
-    await dbConnect();
+    const userId = await getRequestUserId({ allowGuest: true });
+    if (!userId) {
+      return NextResponse.json({ success: false, message: 'Chưa đăng nhập.' }, { status: 401 });
+    }
     const body = await request.json();
 
-    if (!body?.userId || !body?.playlistId || !body?.songId) {
+    if (typeof body?.playlistId !== 'string' || !/^[a-f0-9]{24}$/i.test(body.playlistId) || typeof body?.songId !== 'string' || !body.songId) {
       return NextResponse.json(
         { success: false, message: 'Missing required fields.' },
         { status: 400 }
       );
     }
 
+    await dbConnect();
     const result = await Playlist.updateOne(
-      { _id: body.playlistId, userId: body.userId },
+      { _id: body.playlistId, userId },
       { $pull: { songs: { id: body.songId } } }
     );
 

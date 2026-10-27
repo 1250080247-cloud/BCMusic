@@ -1,5 +1,9 @@
 "use client";
 
+import MotionList from '@/components/MotionList';
+
+import { decodeSongTitle } from '@/lib/song-title';
+
 import { Clock, Music, Sparkles } from 'lucide-react';
 import Image from 'next/image';
 import SettingsPanel from '@/components/SettingsPanel';
@@ -60,7 +64,7 @@ export default function HistoryView({ songs }) {
               {t.history.latestListen}
             </div>
             <p className="text-xl font-bold">{latestListen}</p>
-            <p className="muted-text mt-2 line-clamp-1 text-sm" dangerouslySetInnerHTML={{ __html: songs[0]?.title || t.history.emptyTitle }} />
+            <p className="muted-text mt-2 line-clamp-1 text-sm">{decodeSongTitle(songs[0]?.title || t.history.emptyTitle)}</p>
           </div>
         </div>
 
@@ -86,11 +90,11 @@ export default function HistoryView({ songs }) {
             <p className="muted-text">{t.history.emptyDescription}</p>
           </div>
         ) : (
-          <div className="mt-6 flex flex-col gap-4">
+          <MotionList animationKey={songs.map((item) => item.id).join('|')} className="mt-6 flex flex-col gap-4">
             {songs.map((song, index) => (
               <SongCard key={`${song.id}-${song.listenedAt}-${index}`} song={song} playlist={songs} />
             ))}
-          </div>
+          </MotionList>
         )}
       </section>
     </main>

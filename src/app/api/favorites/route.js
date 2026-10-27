@@ -1,17 +1,17 @@
+import { getRequestUserId } from '@/lib/request-user';
+import { restoreSoundCloudMetadata } from '@/lib/song-metadata';
 import dbConnect from '@/lib/mongodb';
 import Favorite from '@/models/Favorite';
 import { NextResponse } from 'next/server';
 
-// GET /api/favorites?userId=xxx
+// Favorites belong to the authenticated account.
 export async function GET(request) {
   try {
-    await dbConnect();
-    const { searchParams } = new URL(request.url);
-    const userId = searchParams.get('userId');
-
+    const userId = await getRequestUserId();
     if (!userId) {
-      return NextResponse.json({ success: false, message: 'Missing userId.' }, { status: 400 });
+      return NextResponse.json({ success: false, message: 'Chưa đăng nhập.' }, { status: 401 });
     }
+    await dbConnect();
 
     const favorites = await Favorite.find({ userId }).sort({ favoritedAt: -1 }).lean();
 
@@ -21,10 +21,12 @@ export async function GET(request) {
       thumbnail: f.thumbnail,
       artist: f.artist,
       publishedAt: f.publishedAt,
+      embedUrl: f.embedUrl,
+      sourceUrl: f.sourceUrl,
       source: f.source || 'youtube',
     }));
 
-    return NextResponse.json({ success: true, data: formatted });
+    return NextResponse.json({ success: true, data: await restoreSoundCloudMetadata(formatted, userId) });
   } catch (error) {
     console.error('Favorites GET error:', error);
     return NextResponse.json({ success: false, message: error.message }, { status: 500 });
@@ -34,17 +36,21 @@ export async function GET(request) {
 // POST /api/favorites
 export async function POST(request) {
   try {
-    await dbConnect();
+    const userId = await getRequestUserId();
+    if (!userId) {
+      return NextResponse.json({ success: false, message: 'Chưa đăng nhập.' }, { status: 401 });
+    }
     const body = await request.json();
 
-    const { userId, song } = body;
-    if (!userId || !song?.id || !song?.title) {
+    const { song } = body;
+    if (typeof song?.id !== 'string' || typeof song?.title !== 'string' || !song.id || !song.title.trim()) {
       return NextResponse.json(
-        { success: false, message: 'Missing userId or song info.' },
+        { success: false, message: 'Missing song info.' },
         { status: 400 }
       );
     }
 
+    await dbConnect();
     // Tạo favorite mới (nếu đã tồn tại nhờ index unique sẽ tự báo lỗi hoặc ta dùng findOneAndUpdate)
     const favorite = await Favorite.findOneAndUpdate(
       { userId, songId: song.id },
@@ -55,6 +61,8 @@ export async function POST(request) {
         thumbnail: song.thumbnail || '',
         artist: song.artist || 'Unknown',
         publishedAt: song.publishedAt || '',
+        embedUrl: song.embedUrl,
+        sourceUrl: song.sourceUrl,
         source: song.source || 'youtube',
         favoritedAt: new Date(),
       },
@@ -71,18 +79,21 @@ export async function POST(request) {
 // DELETE /api/favorites
 export async function DELETE(request) {
   try {
-    await dbConnect();
+    const userId = await getRequestUserId();
+    if (!userId) {
+      return NextResponse.json({ success: false, message: 'Chưa đăng nhập.' }, { status: 401 });
+    }
     const { searchParams } = new URL(request.url);
-    const userId = searchParams.get('userId');
     const songId = searchParams.get('songId');
 
     if (!userId || !songId) {
       return NextResponse.json(
-        { success: false, message: 'Missing userId or songId.' },
+        { success: false, message: 'Missing songId.' },
         { status: 400 }
       );
     }
 
+    await dbConnect();
     const result = await Favorite.deleteOne({ userId, songId });
 
     if (result.deletedCount === 0) {

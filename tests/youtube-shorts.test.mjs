@@ -1,0 +1,191 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { loadModule } from './helpers.mjs';
+import { createHookHarness, deferredFetch, find, findAll, settle, textContent } from './ui-harness.mjs';
+
+const shortId = 'SHORT000001';
+const normalId = 'NORMAL00001';
+const longId = 'LONG0000001';
+const unknownId = 'UNKNOWN0001';
+const mainCsp = 'default-src https:; report-uri https://csp.withgoogle.com/csp/youtube_main';
+const shortPage = () => new Response(null, { headers: { 'content-type': 'text/html; charset=utf-8', 'content-length': '0', 'content-security-policy': mainCsp } });
+const regularPage = id => new Response(null, { status: 303, headers: { location: `https://www.youtube.com/watch?v=${id}` } });
+
+async function youtubeFixture({ ids = [normalId, shortId, longId, unknownId], cached = null, probe, globals = {} } = {}) {
+  const requests = [];
+  const writes = [];
+  const durations = { [normalId]: 'PT2M', [shortId]: 'PT20S', [longId]: 'PT45M', [unknownId]: 'PT2M45S' };
+  const { getYouTubeSongs } = await loadModule('src/lib/youtube.js', {
+    '@/lib/mongodb': { default: async () => {} },
+    '@/models/SongCache': { default: {
+      findOne: () => ({ lean: async () => cached }),
+      findOneAndUpdate: async (...args) => { writes.push(args); },
+    } },
+  }, {
+    process: { env: { YOUTUBE_API_KEY: 'fake-test-api-key' } },
+    fetch: async (input, options = {}) => {
+      const url = new URL(input);
+      requests.push({ url, options });
+      if (url.hostname === 'www.googleapis.com' && url.pathname.endsWith('/search')) {
+        return Response.json({ items: ids.map(id => ({ id: { videoId: id }, snippet: {
+          title: `Song ${id}`, channelTitle: 'Artist', thumbnails: { high: { url: 'https://i.ytimg.com/test.jpg' } }, publishedAt: '2026-01-01',
+        } })), nextPageToken: 'next-real-token', prevPageToken: 'previous-real-token' });
+      }
+      if (url.hostname === 'www.googleapis.com' && url.pathname.endsWith('/videos')) {
+        return Response.json({ items: ids.map(id => ({ id, statistics: { viewCount: '123' }, contentDetails: { duration: durations[id] || 'PT2M' } })) });
+      }
+      assert.equal(url.hostname, 'www.youtube.com', 'probe cannot contact a caller-controlled host');
+      assert.equal(options.method, 'HEAD');
+      assert.equal(options.redirect, 'manual', 'probe never follows redirects to another service');
+      assert.ok(options.signal, 'probe has a bounded timeout');
+      if (probe) return probe(url.pathname.split('/').at(-1), options);
+      if (url.pathname.endsWith(shortId)) return shortPage();
+      if (url.pathname.endsWith(unknownId)) return new Response(null, { status: 403 });
+      return regularPage(url.pathname.split('/').at(-1));
+    },
+    ...globals,
+  });
+  return { getYouTubeSongs, requests, writes };
+}
+
+test('YouTube search removes the medium-duration restriction and keeps regular songs below 2:30 and above 20 minutes', async () => {
+  const fixture = await youtubeFixture();
+  const result = await fixture.getYouTubeSongs('music', 'current-token', 'relevance', 10);
+  assert.deepEqual(Array.from(result.items, item => item.id), [normalId, longId, unknownId]);
+  const search = fixture.requests.find(({ url }) => url.pathname.endsWith('/search')).url;
+  assert.equal(search.searchParams.get('videoDuration'), null);
+  assert.equal(search.searchParams.get('q'), 'music');
+  assert.equal(search.searchParams.get('pageToken'), 'current-token');
+  assert.equal(result.nextPageToken, 'next-real-token');
+  assert.equal(result.prevPageToken, 'previous-real-token');
+  assert.equal(fixture.requests.some(({ url }) => url.pathname === `/shorts/${longId}`), false, 'a 45-minute video cannot be a Short');
+});
+
+test('cached rows are also filtered without editing cached records and use the new unrestricted-search cache namespace', async () => {
+  const cached = { cachedAt: new Date(), songs: [normalId, shortId, unknownId].map(id => ({ id, title: `Song ${id}` })), nextPageToken: 'cached-next', prevPageToken: 'cached-prev' };
+  const before = JSON.stringify(cached);
+  const fixture = await youtubeFixture({ cached });
+  const result = await fixture.getYouTubeSongs('music');
+  assert.deepEqual(Array.from(result.items, item => item.id), [normalId, unknownId]);
+  assert.equal(result.nextPageToken, 'cached-next');
+  assert.equal(result.prevPageToken, 'cached-prev');
+  assert.equal(JSON.stringify(cached), before);
+  assert.equal(fixture.writes.length, 0);
+  assert.equal(fixture.requests.some(({ url }) => url.hostname === 'www.googleapis.com'), false);
+  const fresh = await youtubeFixture();
+  await fresh.getYouTubeSongs('music');
+  assert.match(fresh.writes[0][0].cacheKey, /^youtube-no-shorts-v2:/);
+});
+
+for (const [name, response] of [
+  ['forbidden', () => new Response(null, { status: 403 })],
+  ['not found', () => new Response(null, { status: 404 })],
+  ['rate limited', () => new Response(null, { status: 429 })],
+  ['JSON error disguised as 200', () => new Response(null, { headers: { 'content-type': 'application/json', 'content-length': '1450000' } })],
+  ['small HTML interstitial', () => new Response(null, { headers: { 'content-type': 'text/html', 'content-length': '1200', 'content-security-policy': mainCsp } })],
+  ['large HTML without the YouTube main app signature', () => new Response(null, { headers: { 'content-type': 'text/html', 'content-length': '1450000' } })],
+  ['unverifiable HTML without length', () => new Response(null, { headers: { 'content-type': 'text/html' } })],
+  ['consent redirect', () => new Response(null, { status: 302, headers: { location: 'https://consent.youtube.com/' } })],
+  ['redirect to another video', () => regularPage(shortId)],
+  ['network timeout', () => { throw Object.assign(new Error('Timed out'), { name: 'TimeoutError' }); }],
+]) {
+  test(`unknown Shorts classification (${name}) preserves a regular short-duration song`, async () => {
+    const fixture = await youtubeFixture({ ids: [normalId], probe: response });
+    const result = await fixture.getYouTubeSongs('music');
+    assert.deepEqual(Array.from(result.items, item => item.id), [normalId]);
+  });
+}
+
+test('Shorts probes are cached across reads and cap concurrent requests', async () => {
+  let active = 0;
+  let peak = 0;
+  const ids = Array.from({ length: 10 }, (_, i) => `VIDEO00000${i}`);
+  const cached = { cachedAt: new Date(), songs: ids.map(id => ({ id, title: id })) };
+  const fixture = await youtubeFixture({ cached, probe: async id => {
+    active += 1;
+    peak = Math.max(peak, active);
+    await new Promise(resolve => setTimeout(resolve, 3));
+    active -= 1;
+    return regularPage(id);
+  } });
+  assert.equal((await fixture.getYouTubeSongs('music')).items.length, ids.length);
+  assert.equal((await fixture.getYouTubeSongs('music')).items.length, ids.length);
+  assert.ok(peak <= 4, `expected at most 4 probes, observed ${peak}`);
+  assert.ok(peak > 1, 'requests should not be unnecessarily serial');
+  assert.equal(fixture.requests.length, ids.length, 'each cached classification is reused');
+});
+
+test('a bounded batch keeps unclassified videos when the total probe time budget is exhausted', async () => {
+  let now = Date.now();
+  class Clock extends Date { static now() { return now; } }
+  const ids = Array.from({ length: 9 }, (_, i) => `VIDEO00000${i}`);
+  const fixture = await youtubeFixture({ ids, globals: { Date: Clock }, probe: () => { now += 1000; return shortPage(); } });
+  const result = await fixture.getYouTubeSongs('music');
+  const probes = fixture.requests.filter(({ url }) => url.hostname === 'www.youtube.com');
+  assert.ok(probes.length > 0, 'the classifier should check the initial candidates');
+  assert.ok(probes.length <= 4, `work must stop when the shared deadline expires (${probes.length} probes)`);
+  assert.equal(result.items.length, ids.length - probes.length, 'videos that could not be checked must remain');
+});
+
+test('invalid legacy IDs never become arbitrary URLs in Shorts probes', async () => {
+  const cached = { cachedAt: new Date(), songs: [{ id: '../../private', title: 'Legacy entry' }] };
+  const fixture = await youtubeFixture({ cached });
+  assert.equal((await fixture.getYouTubeSongs('music')).items.length, 1);
+  assert.equal(fixture.requests.length, 0);
+});
+
+test('an empty filtered search page still exposes real next and previous pagination tokens', async () => {
+  const harness = createHookHarness();
+  const deferred = deferredFetch();
+  const navigations = [];
+  const settings = { language: 'en', searchHistory: [], addSearchHistory() {} };
+  const { default: SearchView } = await loadModule('src/components/SearchView.js', {
+    react: harness.react,
+    'next/navigation': { useRouter: () => ({ push: url => navigations.push(url) }), useSearchParams: () => new URLSearchParams('q=music') },
+    '@/lib/store': { useSettingsStore: selector => selector(settings) },
+    '@/components/SongCard': { default: () => null },
+  }, { fetch: deferred.fetch });
+  const content = find(SearchView(), node => typeof node.type === 'function' && node.type.name === 'SearchContent');
+  try {
+    harness.render(content.type);
+    harness.flushEffects();
+    deferred.requests[0].resolve({ items: [], nextPageToken: 'next-real-token', prevPageToken: 'previous-real-token' });
+    await settle();
+    const tree = harness.render(content.type);
+    const buttons = findAll(tree, node => node.type === 'button');
+    const next = buttons.find(node => textContent(node).includes('Next page'));
+    const previous = buttons.find(node => textContent(node).includes('Previous page'));
+    assert.ok(next, 'next page must remain available after every result on this page was filtered');
+    assert.ok(previous);
+    next.props.onClick();
+    assert.equal(new URL(navigations[0], 'http://localhost').searchParams.get('token'), 'next-real-token');
+  } finally { harness.unmount(); }
+});
+
+test('an expired Short classification cannot remove a video when the new batch has no time left to verify it', async () => {
+  let now = Date.now();
+  let expired = false;
+  class Clock extends Date { static now() { return now; } }
+  const cached = { cachedAt: new Date(now), songs: [{ id: shortId, title: 'Song' }] };
+  const fixture = await youtubeFixture({ cached, globals: { Date: Clock }, probe: id => {
+    if (!expired) return shortPage();
+    now += 1000;
+    return regularPage(id);
+  } });
+  assert.equal((await fixture.getYouTubeSongs('music')).items.length, 0);
+  now += 24 * 60 * 60 * 1000 + 1;
+  expired = true;
+  cached.cachedAt = new Date(now);
+  cached.songs = [...Array.from({ length: 4 }, (_, i) => ({ id: `VIDEO00000${i}`, title: 'Regular song' })), { id: shortId, title: 'Unverified now' }];
+  assert.ok((await fixture.getYouTubeSongs('music')).items.some(song => song.id === shortId));
+});
+
+test('YouTube duration metadata is parsed without imposing a minimum song duration', async () => {
+  const { parseYouTubeDuration } = await loadModule('src/lib/youtube-shorts.js');
+  assert.equal(parseYouTubeDuration('PT19S'), 19);
+  assert.equal(parseYouTubeDuration('PT2M30S'), 150);
+  assert.equal(parseYouTubeDuration('PT45M'), 2700);
+  assert.equal(parseYouTubeDuration('P1DT2H3M4S'), 93784);
+  assert.equal(parseYouTubeDuration('PT1.5S'), 1.5);
+  for (const value of [undefined, 'P', 'PT', 'invalid', 'PT-1S']) assert.equal(parseYouTubeDuration(value), null);
+});

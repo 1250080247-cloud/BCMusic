@@ -8,32 +8,36 @@ import NowPlayingPanel from '@/components/NowPlayingPanel';
 import Player from '@/components/Player';
 import Sidebar from '@/components/Sidebar';
 import SongModal from '@/components/SongModal';
+import PageMotion from '@/components/PageMotion';
 
 export default function PersistentShell({ children }) {
   const { data: session } = useSession();
   const setFavorites = useMusicStore((state) => state.setFavorites);
-  const nowPlayingOpen = useMusicStore((state) => state.nowPlayingOpen);
+  const userId = session?.user?.id;
 
   useEffect(() => {
-    if (session?.user?.id) {
-      fetch(`/api/favorites?userId=${session.user.id}`)
+    const controller = new AbortController();
+    setFavorites([]);
+    if (userId) {
+      fetch('/api/favorites', { signal: controller.signal })
         .then((res) => res.json())
         .then((data) => {
-          if (data.success) {
+          if (!controller.signal.aborted && data.success) {
             setFavorites(data.data || []);
           }
         })
-        .catch((err) => console.error('Error fetching favorites:', err));
-    } else {
-      setFavorites([]);
+        .catch((err) => {
+          if (!controller.signal.aborted) console.error('Error fetching favorites:', err);
+        });
     }
-  }, [session, setFavorites]);
+    return () => controller.abort();
+  }, [userId, setFavorites]);
 
   return (
     <>
       <Sidebar />
-      <div className={`app-layout-main${nowPlayingOpen ? ' app-layout-main--np-open' : ''}`}>
-        {children}
+      <div className="app-layout-main">
+        <PageMotion>{children}</PageMotion>
       </div>
       <NowPlayingPanel />
       <Player />

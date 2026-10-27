@@ -12,7 +12,7 @@ import { getYouTubeSongs } from "@/lib/youtube";
 export const revalidate = 1800;
 
 const categories = [
-  { key: "tiktokRemix", query: "tiktok remix ncs" },
+  { key: "tiktokRemix", query: "tiktok remix" },
   { key: "chineseMusic", query: "nhạc trung douyin" },
   { key: "lofi", query: "lofi chill vietnamese" },
   { key: "edm", query: "edm ncs" },
@@ -31,7 +31,8 @@ export default async function Home({ searchParams }) {
   const searchParam = Array.isArray(resolvedParams.search) ? resolvedParams.search[0] : resolvedParams.search;
 
   const currentSearch = searchParam ? searchParam.trim() : "";
-  const currentQuery = genreParam || categories[0].query;
+  const currentQuery = genreParam === 'tiktok remix ncs' ? categories[0].query : genreParam || categories[0].query;
+  const genreKey = categories.find(category => category.query === currentQuery)?.key;
   const currentToken = tokenParam || "";
 
   const isSearchMode = Boolean(currentSearch);
@@ -54,7 +55,7 @@ export default async function Home({ searchParams }) {
     const [mostViewedResult, newestResult, rankingResult] = await Promise.all([
       getYouTubeSongs(currentQuery, currentToken, "viewCount", 5),
       getYouTubeSongs(currentQuery, "", "date", 5),
-      currentToken ? Promise.resolve({ items: [] }) : getYouTubeSongs("music trending", "", "viewCount", 10),
+      currentToken ? Promise.resolve({ items: [] }) : getYouTubeSongs(`${currentQuery} trending`, "", "relevance", 10),
     ]);
 
     mostViewedSongs = mostViewedResult.items;
@@ -73,8 +74,8 @@ export default async function Home({ searchParams }) {
       />
 
       {/* Ranking — only when not searching and on first page */}
-      {!isSearchMode && !currentToken && rankingSongs.length > 0 && (
-        <RankingSection songs={rankingSongs} />
+      {!isSearchMode && !currentToken && (
+        <RankingSection songs={rankingSongs} genreKey={genreKey} />
       )}
 
       <section className="mx-auto px-4 sm:px-8" style={{ maxWidth: '80rem' }}>
@@ -101,14 +102,7 @@ export default async function Home({ searchParams }) {
         ) : (
           <>
             {/* Dual View: Most Viewed + Newest */}
-            {mostViewedSongs.length === 0 && newestSongs.length === 0 ? (
-              <HomeEmptyState />
-            ) : (
-              <DualViewSection
-                mostViewedSongs={mostViewedSongs}
-                newestSongs={newestSongs}
-              />
-            )}
+            <DualViewSection mostViewedSongs={mostViewedSongs} newestSongs={newestSongs} genreKey={genreKey} />
 
             <PaginationControls
               currentQuery={currentQuery}

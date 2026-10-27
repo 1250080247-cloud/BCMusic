@@ -26,6 +26,9 @@ const FavoriteSchema = new mongoose.Schema({
   embedUrl: {
     type: String,
   },
+  sourceUrl: {
+    type: String,
+  },
   source: {
     type: String,
     default: 'youtube',

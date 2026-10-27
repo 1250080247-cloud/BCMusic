@@ -1,5 +1,9 @@
 "use client";
 
+import MotionList from '@/components/MotionList';
+
+import { decodeSongTitle } from '@/lib/song-title';
+
 import { useSession } from 'next-auth/react';
 import { useEffect, useState } from 'react';
 import { Heart, Music, Edit2, Check, X, Camera, Calendar, Play } from 'lucide-react';
@@ -11,32 +15,36 @@ export default function ProfilePage() {
   const [playlists, setPlaylists] = useState([]);
   const [loadingPlaylists, setLoadingPlaylists] = useState(true);
   const [editing, setEditing] = useState(false);
-  const [form, setForm] = useState({ displayName: '', image: '' });
+  const [draft, setDraft] = useState(null);
   const [updating, setUpdating] = useState(false);
   const [error, setError] = useState('');
 
-  const { favorites, setCurrentSong, setPlaylist, setViewingSong } = useMusicStore();
+  const { favorites, startPlayback, setViewingSong } = useMusicStore();
+  const form = { displayName: session?.user?.name || '', image: '', ...draft };
+  const avatarPreview = draft?.image !== undefined
+    ? draft.image
+    : session?.user?.image;
+  const setForm = (next) => setDraft(typeof next === 'function' ? next(form) : next);
 
   useEffect(() => {
     if (session?.user) {
-      setForm({
-        displayName: session.user.name || '',
-        image: session.user.image || '',
-      });
       // Fetch Playlists
-      setLoadingPlaylists(true);
-      fetch(`/api/playlist?userId=${session.user.id}`)
+      let cancelled = false;
+      fetch('/api/playlist')
         .then((res) => res.json())
         .then((data) => {
+          if (cancelled) return;
           if (data.success) {
             setPlaylists(data.data || []);
           }
           setLoadingPlaylists(false);
         })
         .catch((err) => {
+          if (cancelled) return;
           console.error(err);
           setLoadingPlaylists(false);
         });
+      return () => { cancelled = true; };
     }
   }, [session]);
 
@@ -65,6 +73,10 @@ export default function ProfilePage() {
       setError('Kích thước ảnh phải nhỏ hơn 2MB.');
       return;
     }
+    if (!['image/png', 'image/jpeg', 'image/gif', 'image/webp'].includes(file.type)) {
+      setError('Chỉ hỗ trợ ảnh PNG, JPEG, GIF hoặc WebP.');
+      return;
+    }
 
     const reader = new FileReader();
     reader.onloadend = () => {
@@ -84,9 +96,8 @@ export default function ProfilePage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          userId: session.user.id,
           displayName: form.displayName,
-          image: form.image,
+          ...(draft?.image !== undefined ? { image: draft.image } : {}),
         }),
       });
 
@@ -117,14 +128,12 @@ export default function ProfilePage() {
 
   const openSong = (song) => {
     // Single click: mở modal thông tin bài hát (giống trang chủ)
-    setViewingSong(song);
-    setPlaylist(favorites);
+    setViewingSong(song, favorites);
   };
 
   const playSong = (song) => {
     // Double click: phát ngay
-    setCurrentSong(song);
-    setPlaylist(favorites);
+    startPlayback(song, favorites);
   };
 
   return (
@@ -137,9 +146,9 @@ export default function ProfilePage() {
         {/* Avatar */}
         <div className="relative group flex-shrink-0">
           <div className="w-28 h-28 md:w-32 md:h-32 rounded-full overflow-hidden border-4 border-pink-500/30 shadow-2xl relative bg-[var(--surface-strong)]">
-            {form.image ? (
+            {avatarPreview ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={form.image} alt="" className="w-full h-full object-cover" />
+              <img src={avatarPreview} alt="" className="w-full h-full object-cover" />
             ) : (
               <div className="w-full h-full flex items-center justify-center text-[var(--muted-text)]">
                 <Camera size={40} />
@@ -151,7 +160,7 @@ export default function ProfilePage() {
             <label className="absolute inset-0 bg-black/60 rounded-full flex flex-col items-center justify-center text-white cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity duration-200">
               <Camera size={20} className="mb-1" />
               <span className="text-[10px] font-medium">Đổi ảnh</span>
-              <input type="file" accept="image/*" onChange={handleFileChange} className="hidden" />
+              <input type="file" accept="image/png,image/jpeg,image/gif,image/webp" onChange={handleFileChange} className="hidden" />
             </label>
           )}
         </div>
@@ -167,7 +176,8 @@ export default function ProfilePage() {
                 <input
                   type="text"
                   value={form.displayName}
-                  onChange={(e) => setForm({ ...form, displayName: e.target.value })}
+                  onChange={(e) => setDraft((prev) => ({ ...prev, displayName: e.target.value }))}
+                  maxLength={50}
                   className="w-full px-4 py-2 rounded-xl bg-[var(--surface-strong)] border border-[var(--border)] outline-none focus:border-pink-500 text-sm"
                   required
                 />
@@ -201,10 +211,7 @@ export default function ProfilePage() {
                   type="button"
                   onClick={() => {
                     setEditing(false);
-                    setForm({
-                      displayName: session.user.name || '',
-                      image: session.user.image || '',
-                    });
+                    setDraft(null);
                   }}
                   className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[var(--surface-strong)] border border-[var(--border)] text-xs font-bold hover:bg-[var(--surface-hover)] transition"
                 >
@@ -255,7 +262,7 @@ export default function ProfilePage() {
 
           <div className="surface-card rounded-2xl p-4 flex flex-col gap-2 min-h-[300px]">
             {favorites?.length > 0 ? (
-              <div className="flex flex-col gap-1 max-h-[500px] overflow-y-auto pr-1">
+              <MotionList animationKey={favorites.map((item) => item.id).join('|')} className="flex flex-col gap-1 max-h-[500px] overflow-y-auto pr-1">
                 {favorites.map((song, idx) => (
                   <div
                     key={song.id + idx}
@@ -283,9 +290,7 @@ export default function ProfilePage() {
                       {/* Song details */}
                       <div className="min-w-0">
                         <p
-                          className="text-sm font-bold text-[var(--app-text)] truncate"
-                          dangerouslySetInnerHTML={{ __html: song.title }}
-                        />
+                          className="text-sm font-bold text-[var(--app-text)] truncate">{decodeSongTitle(song.title)}</p>
                         <p className="text-xs text-[var(--muted-text)] truncate mt-0.5">
                           {song.artist}
                         </p>
@@ -293,7 +298,7 @@ export default function ProfilePage() {
                     </div>
                   </div>
                 ))}
-              </div>
+              </MotionList>
             ) : (
               <div className="flex-1 flex flex-col items-center justify-center text-center p-8">
                 <Heart size={32} className="text-[var(--muted-text)]/40 mb-3" />

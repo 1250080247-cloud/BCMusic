@@ -1,25 +1,27 @@
 "use client";
 
+import MotionList from '@/components/MotionList';
+
+import { decodeSongTitle } from '@/lib/song-title';
+
 import { Eye, Sparkles } from 'lucide-react';
 import Image from 'next/image';
 import { formatViewCount, getDictionary } from '@/lib/i18n';
 import { useMusicStore, useSettingsStore } from '@/lib/store';
 
 function HorizontalSongRow({ songs, playlist }) {
-  const { setCurrentSong, setViewingSong, setPlaylist } = useMusicStore();
+  const { startPlayback, setViewingSong } = useMusicStore();
 
   const activateSong = (song) => {
-    setViewingSong(song);
-    setPlaylist(playlist);
+    setViewingSong(song, playlist);
   };
 
   const playSong = (song) => {
-    setCurrentSong(song);
-    setPlaylist(playlist);
+    startPlayback(song, playlist);
   };
 
   return (
-    <div className="scrollbar-hide flex gap-4 overflow-x-auto pb-2" style={{ cursor: 'grab' }}>
+    <MotionList animationKey={songs.map((item) => item.id).join('|')} className="scrollbar-hide flex gap-4 overflow-x-auto pb-2" style={{ cursor: 'grab' }}>
       {songs.map((song) => (
         <article
           key={song.id}
@@ -41,9 +43,7 @@ function HorizontalSongRow({ songs, playlist }) {
           </div>
           <div className="horizontal-song-info">
             <h3
-              className="horizontal-song-title"
-              dangerouslySetInnerHTML={{ __html: song.title }}
-            />
+              className="horizontal-song-title">{decodeSongTitle(song.title)}</h3>
             <p className="horizontal-song-meta">
               {song.artist}
               {song.viewCount ? ` · ${formatViewCount(song.viewCount, 'vi')}` : ''}
@@ -51,24 +51,26 @@ function HorizontalSongRow({ songs, playlist }) {
           </div>
         </article>
       ))}
-    </div>
+    </MotionList>
   );
 }
 
-export default function DualViewSection({ mostViewedSongs, newestSongs }) {
+export default function DualViewSection({ mostViewedSongs, newestSongs, genreKey }) {
   const language = useSettingsStore((state) => state.language);
   const t = getDictionary(language);
+  const genre = genreKey ? t.home.categories[genreKey] : '';
 
   return (
     <div className="flex flex-col gap-8">
       {/* Most Viewed Section — horizontal scroll */}
-      <section>
+      <section data-motion-section>
         <div className="mb-4 flex items-center gap-3">
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-orange-500/15 text-orange-400">
             <Eye size={18} />
           </div>
           <h2 className="section-header text-lg font-extrabold sm:text-xl">
             {t.dualView.mostViewed}
+            {genre && <span className="text-sm font-medium opacity-60"> · {genre}</span>}
           </h2>
         </div>
 
@@ -82,13 +84,14 @@ export default function DualViewSection({ mostViewedSongs, newestSongs }) {
       </section>
 
       {/* Newest Section — horizontal scroll */}
-      <section>
+      <section data-motion-section>
         <div className="mb-4 flex items-center gap-3">
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-500/15 text-emerald-400">
             <Sparkles size={18} />
           </div>
           <h2 className="section-header text-lg font-extrabold sm:text-xl">
             {t.dualView.newest}
+            {genre && <span className="text-sm font-medium opacity-60"> · {genre}</span>}
           </h2>
         </div>
 

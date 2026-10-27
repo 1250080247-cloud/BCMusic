@@ -1,5 +1,7 @@
 "use client";
 
+import MotionList from '@/components/MotionList';
+
 import { useEffect, useState, useRef, Suspense } from 'react';
 import { Search, X, Trash2, ArrowLeft, ArrowRight, Loader2, History } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -19,51 +21,46 @@ function SearchContent() {
   const removeSearchHistory = useSettingsStore((state) => state.removeSearchHistory);
   const clearSearchHistory = useSettingsStore((state) => state.clearSearchHistory);
 
-  const initialQuery = searchParams.get('q') || '';
-  const [query, setQuery] = useState(initialQuery);
-  const [activeSearch, setActiveSearch] = useState(initialQuery);
-  const [results, setResults] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [nextPageToken, setNextPageToken] = useState(null);
-  const [prevPageToken, setPrevPageToken] = useState(null);
+  const activeSearch = (searchParams.get('q') || '').trim();
+  const pageToken = searchParams.get('token') || '';
+  const requestKey = JSON.stringify([activeSearch, pageToken]);
+  const [input, setInput] = useState({ requestKey, value: activeSearch });
+  if (input.requestKey !== requestKey) {
+    setInput({ requestKey, value: activeSearch });
+  }
+  const query = input.requestKey === requestKey ? input.value : activeSearch;
+  const setQuery = (value) => setInput({ requestKey, value });
+  const [response, setResponse] = useState(null);
+  const currentResponse = response?.requestKey === requestKey ? response : null;
+  const results = currentResponse?.items || [];
+  const nextPageToken = currentResponse?.nextPageToken || null;
+  const prevPageToken = currentResponse?.prevPageToken || null;
+  const loading = Boolean(activeSearch && !currentResponse);
   const inputRef = useRef(null);
 
-  const performSearch = async (searchTerm, token = '') => {
-    if (!searchTerm.trim()) {
-      setResults([]);
-      setNextPageToken(null);
-      setPrevPageToken(null);
-      setActiveSearch('');
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const response = await fetch(
-        `/api/search?q=${encodeURIComponent(searchTerm)}&pageToken=${token}&maxResults=10`
-      );
-      const data = await response.json();
-      setResults(data.items || []);
-      setNextPageToken(data.nextPageToken || null);
-      setPrevPageToken(data.prevPageToken || null);
-      setActiveSearch(searchTerm);
-
-      // Save to search history
-      addSearchHistory(searchTerm);
-    } catch (error) {
-      console.error('Search error:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Sync state and perform search when query parameters change
   useEffect(() => {
-    const q = searchParams.get('q') || '';
-    const token = searchParams.get('token') || '';
-    setQuery(q);
-    performSearch(q, token);
-  }, [searchParams]);
+    if (!activeSearch) return;
+    const controller = new AbortController();
+    async function performSearch() {
+      try {
+        const result = await fetch(
+          `/api/search?q=${encodeURIComponent(activeSearch)}&pageToken=${encodeURIComponent(pageToken)}&maxResults=10`,
+          { signal: controller.signal }
+        );
+        if (!result.ok) throw new Error('Search failed');
+        const data = await result.json();
+        if (controller.signal.aborted) return;
+        setResponse({ ...data, requestKey });
+        addSearchHistory(activeSearch);
+      } catch (error) {
+        if (controller.signal.aborted) return;
+        console.error('Search error:', error);
+        setResponse({ requestKey, items: [], error: true });
+      }
+    }
+    performSearch();
+    return () => controller.abort();
+  }, [activeSearch, pageToken, requestKey, addSearchHistory]);
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -87,7 +84,7 @@ function SearchContent() {
   };
 
   const handlePageChange = (token) => {
-    router.push(`/search?q=${encodeURIComponent(activeSearch)}&token=${token}`);
+    router.push(`/search?q=${encodeURIComponent(activeSearch)}&token=${encodeURIComponent(token)}`);
   };
 
   return (
@@ -138,24 +135,27 @@ function SearchContent() {
         /* Results Section */
         <div className="mt-8 animate-fade-in">
           <h2 className="text-lg font-bold mb-4 text-[var(--app-text)]">
-            {t.searchPage.resultsFor} <span className="text-pink-400">"{activeSearch}"</span>
+            {t.searchPage.resultsFor} <span className="text-pink-400">&quot;{activeSearch}&quot;</span>
           </h2>
 
-          {results.length === 0 ? (
+          {currentResponse?.error ? (
+            <p role="alert" className="muted-text py-8">{language === 'vi' ? 'Không thể tìm kiếm. Vui lòng thử lại.' : 'Search failed. Please try again.'}</p>
+          ) : results.length === 0 ? (
             <div className="surface-card rounded-3xl p-12 text-center border border-[var(--border)]">
               <Search size={48} className="mx-auto mb-4 text-[var(--muted-text)] opacity-40" />
               <p className="font-bold text-lg text-[var(--app-text)]">{t.searchPage.noResults}</p>
               <p className="muted-text mt-1 text-sm">{t.searchPage.noResultsHint}</p>
             </div>
           ) : (
-            <>
-              <div className="flex flex-col gap-4">
-                {results.map((song) => (
-                  <SongCard key={song.id} song={song} playlist={results} />
-                ))}
-              </div>
+            <MotionList animationKey={results.map((item) => item.id).join('|')} className="flex flex-col gap-4">
+              {results.map((song) => (
+                <SongCard key={song.id} song={song} playlist={results} />
+              ))}
+            </MotionList>
+          )}
 
-              {/* Pagination controls */}
+          {/* Filtering a page of Shorts can leave zero rows and real page tokens. */}
+          {!currentResponse?.error && (prevPageToken || nextPageToken) && (
               <div className="mt-8 flex items-center justify-center gap-4">
                 {prevPageToken && (
                   <button
@@ -176,7 +176,6 @@ function SearchContent() {
                   </button>
                 )}
               </div>
-            </>
           )}
         </div>
       ) : (

@@ -1,17 +1,16 @@
+import { getRequestUserId } from '@/lib/request-user';
 import dbConnect from '@/lib/mongodb';
 import Playlist from '@/models/Playlist';
 import { NextResponse } from 'next/server';
 
-// GET /api/playlist?userId=xxx — list all playlists for user
+// List playlists owned by the session or verified guest.
 export async function GET(request) {
   try {
-    await dbConnect();
-    const { searchParams } = new URL(request.url);
-    const userId = searchParams.get('userId');
-
+    const userId = await getRequestUserId({ allowGuest: true });
     if (!userId) {
-      return NextResponse.json({ success: false, message: 'Missing userId.' }, { status: 400 });
+      return NextResponse.json({ success: false, message: 'Chưa đăng nhập.' }, { status: 401 });
     }
+    await dbConnect();
 
     const playlists = await Playlist.find({ userId }).sort({ createdAt: -1 }).lean();
 
@@ -32,18 +31,22 @@ export async function GET(request) {
 // POST /api/playlist — create a new playlist
 export async function POST(request) {
   try {
-    await dbConnect();
+    const userId = await getRequestUserId({ allowGuest: true });
+    if (!userId) {
+      return NextResponse.json({ success: false, message: 'Chưa đăng nhập.' }, { status: 401 });
+    }
     const body = await request.json();
 
-    if (!body?.userId || !body?.name?.trim()) {
+    if (typeof body?.name !== 'string' || !body.name.trim() || body.name.trim().length > 100) {
       return NextResponse.json(
-        { success: false, message: 'Missing userId or playlist name.' },
+        { success: false, message: 'Missing playlist name.' },
         { status: 400 }
       );
     }
 
+    await dbConnect();
     const newPlaylist = await Playlist.create({
-      userId: body.userId,
+      userId,
       name: body.name.trim(),
     });
 
@@ -65,17 +68,21 @@ export async function POST(request) {
 // DELETE /api/playlist — delete a playlist
 export async function DELETE(request) {
   try {
-    await dbConnect();
+    const userId = await getRequestUserId({ allowGuest: true });
+    if (!userId) {
+      return NextResponse.json({ success: false, message: 'Chưa đăng nhập.' }, { status: 401 });
+    }
     const body = await request.json();
 
-    if (!body?.userId || !body?.playlistId) {
+    if (typeof body?.playlistId !== 'string' || !/^[a-f0-9]{24}$/i.test(body.playlistId)) {
       return NextResponse.json(
-        { success: false, message: 'Missing userId or playlistId.' },
+        { success: false, message: 'Missing playlistId.' },
         { status: 400 }
       );
     }
 
-    const result = await Playlist.deleteOne({ _id: body.playlistId, userId: body.userId });
+    await dbConnect();
+    const result = await Playlist.deleteOne({ _id: body.playlistId, userId });
 
     if (result.deletedCount === 0) {
       return NextResponse.json(

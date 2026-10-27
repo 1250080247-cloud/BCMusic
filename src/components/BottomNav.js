@@ -14,25 +14,21 @@ const navItems = [
 ];
 
 export default function BottomNav() {
+  const searchParams = useSearchParams();
+  const currentSearch = searchParams.get('search') || '';
+  return <BottomNavContent key={currentSearch} currentSearch={currentSearch} />;
+}
+
+function BottomNavContent({ currentSearch }) {
   const pathname = usePathname();
   const router = useRouter();
-  const searchParams = useSearchParams();
   const language = useSettingsStore((state) => state.language);
   const currentSong = useMusicStore((state) => state.currentSong);
   const t = getDictionary(language);
 
-  const currentSearch = searchParams.get('search') || '';
-  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [isSearchOpen, setIsSearchOpen] = useState(Boolean(currentSearch));
   const [query, setQuery] = useState(currentSearch);
   const inputRef = useRef(null);
-
-  // Sync query state with URL search param
-  useEffect(() => {
-    setQuery(currentSearch);
-    if (currentSearch) {
-      setIsSearchOpen(true);
-    }
-  }, [currentSearch]);
 
   // Auto-focus input when search opens
   useEffect(() => {

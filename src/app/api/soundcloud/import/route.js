@@ -1,3 +1,4 @@
+import { getRequestUserId } from '@/lib/request-user';
 import dbConnect from '@/lib/mongodb';
 import { resolveSoundCloudUrl } from '@/lib/soundcloud';
 import SoundCloudTrack from '@/models/SoundCloudTrack';
@@ -5,17 +6,21 @@ import { NextResponse } from 'next/server';
 
 /**
  * POST /api/soundcloud/import
- * Body: { userId: string, url: string }
+ * Body: { url: string }
  *
  * Resolves a SoundCloud URL via oEmbed, saves the track metadata to MongoDB.
  */
 export async function POST(request) {
   try {
+    const userId = await getRequestUserId({ allowGuest: true });
+    if (!userId) {
+      return NextResponse.json({ success: false, message: 'Chưa đăng nhập.' }, { status: 401 });
+    }
     const body = await request.json();
 
-    if (!body?.userId || !body?.url?.trim()) {
+    if (typeof body?.url !== 'string' || !body.url.trim()) {
       return NextResponse.json(
-        { success: false, message: 'Missing userId or SoundCloud URL.' },
+        { success: false, message: 'Missing SoundCloud URL.' },
         { status: 400 }
       );
     }
@@ -37,7 +42,7 @@ export async function POST(request) {
 
     // Check if already imported by this user
     const existing = await SoundCloudTrack.findOne({
-      userId: body.userId,
+      userId,
       scId: trackData.id,
     }).lean();
 
@@ -57,7 +62,7 @@ export async function POST(request) {
       thumbnail: trackData.thumbnail,
       sourceUrl: scUrl,
       embedUrl: trackData.embedUrl,
-      userId: body.userId,
+      userId,
     });
 
     return NextResponse.json({
@@ -85,21 +90,17 @@ export async function POST(request) {
 }
 
 /**
- * GET /api/soundcloud/import?userId=xxx
+ * GET /api/soundcloud/import
  *
  * Returns all SoundCloud tracks imported by a user.
  */
 export async function GET(request) {
   try {
-    const { searchParams } = new URL(request.url);
-    const userId = searchParams.get('userId');
-
+    const userId = await getRequestUserId({ allowGuest: true });
     if (!userId) {
-      return NextResponse.json(
-        { success: false, message: 'Missing userId.' },
-        { status: 400 }
-      );
+      return NextResponse.json({ success: false, message: 'Chưa đăng nhập.' }, { status: 401 });
     }
+
 
     await dbConnect();
 
@@ -130,17 +131,21 @@ export async function GET(request) {
 
 /**
  * DELETE /api/soundcloud/import
- * Body: { userId: string, scId: string }
+ * Body: { scId: string }
  *
  * Removes an imported SoundCloud track.
  */
 export async function DELETE(request) {
   try {
+    const userId = await getRequestUserId({ allowGuest: true });
+    if (!userId) {
+      return NextResponse.json({ success: false, message: 'Chưa đăng nhập.' }, { status: 401 });
+    }
     const body = await request.json();
 
-    if (!body?.userId || !body?.scId) {
+    if (typeof body?.scId !== 'string' || !body.scId) {
       return NextResponse.json(
-        { success: false, message: 'Missing userId or scId.' },
+        { success: false, message: 'Missing scId.' },
         { status: 400 }
       );
     }
@@ -148,7 +153,7 @@ export async function DELETE(request) {
     await dbConnect();
 
     const result = await SoundCloudTrack.deleteOne({
-      userId: body.userId,
+      userId,
       scId: body.scId,
     });
 

@@ -1,5 +1,6 @@
 import dbConnect from '@/lib/mongodb';
 import SongCache from '@/models/SongCache';
+import { parseYouTubeDuration, removeYouTubeShorts } from '@/lib/youtube-shorts';
 
 const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour in milliseconds
 
@@ -7,7 +8,9 @@ const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour in milliseconds
  * Build a unique cache key from query parameters.
  */
 function buildCacheKey(query, order, maxResults, pageToken) {
-  return `${query}__${order}__${maxResults}__${pageToken || 'first'}`;
+  // The old namespace contained only 4–20 minute results (videoDuration=medium).
+  // Keep those documents intact while fetching unrestricted results separately.
+  return `youtube-no-shorts-v2:${query}__${order}__${maxResults}__${pageToken || 'first'}`;
 }
 
 /**
@@ -19,7 +22,7 @@ async function fetchFromYouTube(searchQuery, pageToken = '', order = 'relevance'
   if (!API_KEY) return { items: [], nextPageToken: null, prevPageToken: null };
 
   const tokenParam = pageToken ? `&pageToken=${pageToken}` : '';
-  const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=${maxResults}&q=${encodeURIComponent(searchQuery)}&type=video&videoDuration=medium&order=${order}&key=${API_KEY}${tokenParam}`;
+  const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=${maxResults}&q=${encodeURIComponent(searchQuery)}&type=video&order=${order}&key=${API_KEY}${tokenParam}`;
 
   try {
     const res = await fetch(url, { cache: 'no-store' });
@@ -32,17 +35,19 @@ async function fetchFromYouTube(searchQuery, pageToken = '', order = 'relevance'
 
     const filteredItems = (data.items || []).filter((item) => item.id?.videoId);
 
-    // Fetch view counts via Videos API (part=statistics)
+    // Batch view counts and duration metadata in the same Videos API request.
     let viewCounts = {};
+    let durations = {};
     const videoIds = filteredItems.map((item) => item.id.videoId).join(',');
     if (videoIds) {
       try {
-        const statsUrl = `https://www.googleapis.com/youtube/v3/videos?part=statistics&id=${videoIds}&key=${API_KEY}`;
+        const statsUrl = `https://www.googleapis.com/youtube/v3/videos?part=statistics,contentDetails&id=${videoIds}&key=${API_KEY}`;
         const statsRes = await fetch(statsUrl, { cache: 'no-store' });
         const statsData = await statsRes.json();
         if (statsRes.ok && statsData.items) {
           for (const v of statsData.items) {
             viewCounts[v.id] = v.statistics?.viewCount || null;
+            durations[v.id] = parseYouTubeDuration(v.contentDetails?.duration);
           }
         }
       } catch (statsError) {
@@ -57,11 +62,12 @@ async function fetchFromYouTube(searchQuery, pageToken = '', order = 'relevance'
       thumbnail: item.snippet.thumbnails.high?.url || item.snippet.thumbnails.medium?.url,
       publishedAt: item.snippet.publishedAt,
       viewCount: viewCounts[item.id.videoId] || null,
+      durationSeconds: durations[item.id.videoId] ?? null,
       source: 'youtube',
     }));
 
     return {
-      items: formattedItems,
+      items: await removeYouTubeShorts(formattedItems),
       nextPageToken: data.nextPageToken || null,
       prevPageToken: data.prevPageToken || null,
     };
@@ -96,7 +102,7 @@ export async function getYouTubeSongs(searchQuery, pageToken = '', order = 'rele
         // Cache hit! Return cached data without calling YouTube
         console.log(`[Cache HIT] "${searchQuery}" (${order}) — saved 100 quota points`);
         return {
-          items: cached.songs,
+          items: await removeYouTubeShorts(cached.songs || []),
           nextPageToken: cached.nextPageToken,
           prevPageToken: cached.prevPageToken,
         };

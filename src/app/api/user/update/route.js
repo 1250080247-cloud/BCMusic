@@ -1,25 +1,39 @@
+import { getRequestUserId } from '@/lib/request-user';
+import { isAllowedAvatar } from '@/lib/avatar';
 import dbConnect from '@/lib/mongodb';
 import User from '@/models/User';
 import { NextResponse } from 'next/server';
 
 export async function POST(request) {
   try {
-    await dbConnect();
-    const body = await request.json();
-    const { userId, displayName, image } = body;
-
+    const userId = await getRequestUserId();
     if (!userId) {
-      return NextResponse.json({ success: false, message: 'Missing userId.' }, { status: 400 });
+      return NextResponse.json({ success: false, message: 'Chưa đăng nhập.' }, { status: 401 });
+    }
+    const body = await request.json();
+    const { displayName, image } = body || {};
+    const updateData = {};
+    if (displayName !== undefined) {
+      if (typeof displayName !== 'string' || !displayName.trim() || displayName.trim().length > 50) {
+        return NextResponse.json({ success: false, message: 'Tên hiển thị phải từ 1–50 ký tự.' }, { status: 400 });
+      }
+      updateData.displayName = displayName.trim();
+    }
+    if (image !== undefined) {
+      if (typeof image !== 'string' || !isAllowedAvatar(image.trim())) {
+        return NextResponse.json({ success: false, message: 'Ảnh phải là PNG, JPEG, GIF, WebP tối đa 2MB hoặc URL HTTPS bên ngoài.' }, { status: 400 });
+      }
+      updateData.image = image.trim();
+    }
+    if (!Object.keys(updateData).length) {
+      return NextResponse.json({ success: false, message: 'Không có thông tin cập nhật.' }, { status: 400 });
     }
 
-    const updateData = {};
-    if (displayName !== undefined) updateData.displayName = displayName.trim();
-    if (image !== undefined) updateData.image = image.trim();
-
+    await dbConnect();
     const updatedUser = await User.findByIdAndUpdate(
       userId,
       { $set: updateData },
-      { returnDocument: 'after' }
+      { returnDocument: 'after', runValidators: true }
     );
 
     if (!updatedUser) {
@@ -36,6 +50,6 @@ export async function POST(request) {
     });
   } catch (error) {
     console.error('User update error:', error);
-    return NextResponse.json({ success: false, message: error.message }, { status: 500 });
+    return NextResponse.json({ success: false, message: 'Không thể cập nhật hồ sơ.' }, { status: 500 });
   }
 }

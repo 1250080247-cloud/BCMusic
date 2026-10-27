@@ -2,19 +2,25 @@
   "name": "music",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "npm@11.19.0",
   "scripts": {
     "dev": "node --max-http-header-size=1048576 node_modules/next/dist/bin/next dev",
     "build": "next build",
     "start": "node --max-http-header-size=1048576 node_modules/next/dist/bin/next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test": "node --experimental-vm-modules --test --test-isolation=none tests/*.test.mjs",
+    "verify:db": "node scripts/verify-mongodb.mjs",
+    "verify:db:crud": "node scripts/verify-mongodb.mjs --crud"
   },
   "dependencies": {
+    "@gsap/react": "2.1.2",
     "bcryptjs": "^3.0.3",
     "framer-motion": "^12.40.0",
+    "gsap": "3.15.0",
     "lucide-react": "^1.17.0",
-    "mongoose": "^9.6.3",
-    "next": "16.2.7",
-    "next-auth": "^4.24.14",
+    "mongoose": "9.7.2",
+    "next": "16.4.3",
+    "next-auth": "4.24.15",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "react-youtube": "^10.1.0",
@@ -23,7 +29,7 @@
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "eslint": "^9",
-    "eslint-config-next": "16.2.7",
+    "eslint-config-next": "16.4.3",
     "tailwindcss": "^4"
   }
 }

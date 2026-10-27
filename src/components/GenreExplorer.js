@@ -1,8 +1,11 @@
 "use client";
 
+import { decodeSongTitle } from '@/lib/song-title';
+import MotionList from '@/components/MotionList';
+
 import { Eye, Loader2, Music2, Sparkles } from 'lucide-react';
 import Image from 'next/image';
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { formatViewCount } from '@/lib/i18n';
 import { useMusicStore } from '@/lib/store';
 
@@ -103,13 +106,13 @@ function GenrePill({ item, isActive, onClick }) {
 
 /* ── Song card inside results ─────────────────────────── */
 function ExploreSongCard({ song, playlist }) {
-  const { setCurrentSong, setViewingSong, setPlaylist } = useMusicStore();
+  const { startPlayback, setViewingSong } = useMusicStore();
   const [hovered, setHovered] = useState(false);
 
   return (
     <article
-      onClick={() => { setViewingSong(song); setPlaylist(playlist); }}
-      onDoubleClick={() => { setCurrentSong(song); setPlaylist(playlist); }}
+      onClick={() => { setViewingSong(song, playlist); }}
+      onDoubleClick={() => { startPlayback(song, playlist); }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
@@ -142,9 +145,7 @@ function ExploreSongCard({ song, playlist }) {
             display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
             overflow: 'hidden', lineHeight: 1.3, transition: 'color 150ms ease',
             margin: 0,
-          }}
-          dangerouslySetInnerHTML={{ __html: song.title }}
-        />
+          }}>{decodeSongTitle(song.title)}</p>
         <p style={{ fontSize: '0.68rem', color: '#94a3b8', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {song.artist}{song.viewCount ? ` · ${formatViewCount(song.viewCount, 'vi')}` : ''}
         </p>
@@ -193,7 +194,9 @@ function ExploreResults({ selected, songs, newestSongs, loading }) {
             </div>
             {songs.length === 0
               ? <p style={{ fontSize: '0.8rem', color: '#64748b' }}>Không có kết quả</p>
-              : songs.map(s => <ExploreSongCard key={s.id} song={s} playlist={songs} />)
+              : <MotionList animationKey={songs.map((song) => song.id).join('|')}>
+                  {songs.map(s => <ExploreSongCard key={s.id} song={s} playlist={songs} />)}
+                </MotionList>
             }
           </div>
           {/* Newest */}
@@ -203,7 +206,9 @@ function ExploreResults({ selected, songs, newestSongs, loading }) {
             </div>
             {newestSongs.length === 0
               ? <p style={{ fontSize: '0.8rem', color: '#64748b' }}>Không có kết quả</p>
-              : newestSongs.map(s => <ExploreSongCard key={s.id} song={s} playlist={newestSongs} />)
+              : <MotionList animationKey={newestSongs.map((song) => song.id).join('|')}>
+                  {newestSongs.map(s => <ExploreSongCard key={s.id} song={s} playlist={newestSongs} />)}
+                </MotionList>
             }
           </div>
         </div>
@@ -218,25 +223,34 @@ export default function GenreExplorer() {
   const [songs, setSongs] = useState([]);
   const [newestSongs, setNewestSongs] = useState([]);
   const [loading, setLoading] = useState(false);
+  const requestRef = useRef(null);
+  useEffect(() => () => requestRef.current?.abort(), []);
 
   const handleSelect = useCallback(async (item) => {
+    requestRef.current?.abort();
     if (selected?.key === item.key) {
       setSelected(null); setSongs([]); setNewestSongs([]);
+      setLoading(false);
       return;
     }
+    const controller = new AbortController();
+    requestRef.current = controller;
     setSelected(item); setSongs([]); setNewestSongs([]); setLoading(true);
     try {
       const [vRes, nRes] = await Promise.all([
-        fetch(`/api/explore?q=${encodeURIComponent(item.query)}&order=viewCount`),
-        fetch(`/api/explore?q=${encodeURIComponent(item.query)}&order=date`),
+        fetch(`/api/explore?q=${encodeURIComponent(item.query)}&order=viewCount`, { signal: controller.signal }),
+        fetch(`/api/explore?q=${encodeURIComponent(item.query)}&order=date`, { signal: controller.signal }),
       ]);
+      if (!vRes.ok || !nRes.ok) throw new Error('Explore failed');
       const [vData, nData] = await Promise.all([vRes.json(), nRes.json()]);
+      if (controller.signal.aborted) return;
       setSongs(vData.items || []);
       setNewestSongs(nData.items || []);
     } catch {
+      if (controller.signal.aborted) return;
       setSongs([]); setNewestSongs([]);
     } finally {
-      setLoading(false);
+      if (!controller.signal.aborted) setLoading(false);
     }
   }, [selected]);
 
@@ -276,7 +290,7 @@ export default function GenreExplorer() {
         }
       `}</style>
 
-      <section style={section}>
+      <section data-motion-section style={section}>
         <div style={divider} />
 
         {/* Eyebrow */}

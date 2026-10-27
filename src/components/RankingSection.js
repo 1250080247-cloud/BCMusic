@@ -1,40 +1,44 @@
 "use client";
 
+import MotionList from '@/components/MotionList';
+
+import { decodeSongTitle } from '@/lib/song-title';
+
 import { Crown } from 'lucide-react';
 import Image from 'next/image';
 import { formatViewCount, getDictionary } from '@/lib/i18n';
 import { useMusicStore, useSettingsStore } from '@/lib/store';
 
-export default function RankingSection({ songs }) {
-  const { setCurrentSong, setViewingSong, setPlaylist } = useMusicStore();
+export default function RankingSection({ songs, genreKey }) {
+  const { startPlayback, setViewingSong } = useMusicStore();
   const language = useSettingsStore((state) => state.language);
   const t = getDictionary(language);
+  const genre = genreKey ? t.home.categories[genreKey] : '';
 
-  if (!songs || songs.length === 0) return null;
+  if (!songs) return null;
 
   const activateSong = (song) => {
-    setViewingSong(song);
-    setPlaylist(songs);
+    setViewingSong(song, songs);
   };
 
   const playSong = (song) => {
-    setCurrentSong(song);
-    setPlaylist(songs);
+    startPlayback(song, songs);
   };
 
   return (
-    <section className="mx-auto mb-8 px-4 sm:px-8" style={{ maxWidth: '80rem' }}>
+    <section data-motion-section className="mx-auto mb-8 px-4 sm:px-8" style={{ maxWidth: '80rem' }}>
       <div className="mb-5 flex items-center gap-3">
         <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-amber-500/15 text-amber-400">
           <Crown size={20} />
         </div>
         <div>
-          <h2 className="text-xl font-extrabold sm:text-2xl">{t.ranking.title}</h2>
-          <p className="muted-text text-sm">{t.ranking.subtitle}</p>
+          <h2 className="text-xl font-extrabold sm:text-2xl">{t.ranking.title}{genre && <span className="text-sm font-medium opacity-60"> · {genre}</span>}</h2>
+          <p className="muted-text text-sm">{genre ? (language === 'vi' ? `Những bản nhạc nổi bật của ${genre}` : `Popular tracks for ${genre}`) : t.ranking.subtitle}</p>
         </div>
       </div>
 
-      <div className="scrollbar-hide flex gap-4 overflow-x-auto pb-2" style={{ cursor: 'grab' }}>
+      {songs.length === 0 && <p className="surface-card rounded-3xl p-8 muted-text text-sm">{t.home.noSongsDescription}</p>}
+      <MotionList animationKey={songs.map((item) => item.id).join('|')} className="scrollbar-hide flex gap-4 overflow-x-auto pb-2" style={{ cursor: 'grab' }}>
         {songs.map((song, index) => (
           <article
             key={song.id}
@@ -62,9 +66,7 @@ export default function RankingSection({ songs }) {
             </div>
             <div className="horizontal-song-info">
               <h3
-                className="horizontal-song-title"
-                dangerouslySetInnerHTML={{ __html: song.title }}
-              />
+                className="horizontal-song-title">{decodeSongTitle(song.title)}</h3>
               <p className="horizontal-song-meta">
                 {song.artist}
                 {song.viewCount ? ` · ${formatViewCount(song.viewCount, language)}` : ''}
@@ -72,7 +74,7 @@ export default function RankingSection({ songs }) {
             </div>
           </article>
         ))}
-      </div>
+      </MotionList>
     </section>
   );
 }

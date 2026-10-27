@@ -1,36 +1,83 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).
+# BCMusic
 
-## Getting Started
+Ứng dụng nghe nhạc YouTube và SoundCloud, dùng Next.js App Router, NextAuth và MongoDB/Mongoose.
 
-First, run the development server:
+## Chạy dự án
 
-```bash
+Dùng Node.js 24 và npm 11.19.0 (được ghim trong `packageManager`; repo có `package-lock.json`).
+
+```sh
+npm ci
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+`.npmrc` tắt lifecycle scripts của dependency mặc định. Dùng `npm ci` để cài đúng lockfile; `npm run dev`, `npm test` và `npm run build` vẫn chạy bình thường. Khi thêm dependency cần install script, phải xem nội dung script và chỉ chạy bước cần thiết sau khi rà soát.
 
-You can start editing the page by modifying `app/page.js`. The page auto-updates as you edit the file.
+Mở http://localhost:3000. Cấu hình `.env.local` bằng các giá trị riêng của môi trường:
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```dotenv
+MONGODB_URI=mongodb://localhost:27017/bcmusic
+# Tuỳ chọn khi DNS SRV của Node gặp lỗi; để trống nếu DNS hệ thống hoạt động.
+MONGODB_DNS_SERVERS=
+NEXTAUTH_SECRET=replace-with-a-long-random-secret
+NEXTAUTH_URL=http://localhost:3000
+YOUTUBE_API_KEY=your-youtube-data-api-key
+GOOGLE_CLIENT_ID=your-google-oauth-client-id
+GOOGLE_CLIENT_SECRET=your-google-oauth-client-secret
+```
 
-## Learn More
+Google OAuth cần cấu hình callback `/api/auth/callback/google`. Không commit `.env.local` hoặc bí mật vào Git.
 
-To learn more about Next.js, take a look at the following resources:
+```sh
+npm test
+npm run lint
+npm audit
+npm run build
+npm start
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Test dùng `node:test`, VM và SWC có sẵn, chạy độc lập với database và dịch vụ ngoài. Build cần truy cập Google Fonts để tải Geist và Geist Mono.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## DNS và kiểm tra MongoDB thật
 
-## Deploy on Vercel
+Nếu Node trên Windows báo `querySrv ECONNREFUSED` dù DNS của Windows hoạt động, thêm `MONGODB_DNS_SERVERS=1.1.1.1,8.8.8.8` vào `.env.local`, rồi khởi động lại app. Cấu hình chỉ đổi resolver trong tiến trình Node cho URI `mongodb+srv://`; không sửa DNS Windows hoặc đổi database. Trên Vercel, để biến này trống nếu DNS mặc định hoạt động.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Ứng dụng cấu hình cả DNS callback và Promise. Điều này cần cho production Next.js: nếu `node:dns/promises` được nạp trước, chỉ gọi `dns.setServers()` có thể vẫn để MongoDB dùng resolver cũ. Sau khi đổi mã, chạy lại `npm run build` rồi khởi động lại production bằng `npm start`.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```sh
+npm run verify:db
+npm run verify:db:crud
+```
+
+Lệnh đầu chỉ kết nối và ping. Lệnh CRUD tạo/đọc/sửa/xóa bản ghi tạm với `_id` và danh tính riêng trong các collection ứng dụng đã tồn tại, tắt autoIndex/autoCreate, rồi xác minh số lượng bản ghi và index không đổi. Cleanup chỉ xóa đúng bản ghi do lần kiểm tra tạo; không chạy migration. Hoạt động ghi khác hoặc TTL đồng thời có thể làm kiểm tra số lượng không khớp.
+
+## Animation
+
+GSAP Core, React `useGSAP` và ScrollTrigger điều khiển hiệu ứng xuất hiện tiêu đề, danh sách và các phần trang chủ khi cuộn. Animation dùng scope theo component, được dọn khi điều hướng và tắt với `prefers-reduced-motion`. Nội dung vẫn hiện khi JavaScript chưa chạy. Hai dependency `gsap` và `@gsap/react` được ghim phiên bản; không thay luồng phát nhạc hoặc cuộn của trình duyệt.
+
+## Player và lời bài hát
+
+Bấm ảnh bìa hoặc nút lời ở thanh phát để mở player toàn màn hình. Player dùng ảnh bìa làm nền, giữ các điều khiển YouTube/SoundCloud hiện có và có tab lời, hàng đợi, thông tin. Escape thu gọn giao diện và tiếp tục phát nhạc.
+
+Lời được tra qua LRCLIB miễn phí, không cần API key và không ghi vào MongoDB. Bản có timestamp LRC sẽ chạy theo từng dòng nếu thời lượng khớp bản ghi; bấm câu để tua. Nguồn chỉ có văn bản sẽ hiện lời tĩnh. Không giả lập thời gian từng chữ. Chi tiết hợp đồng và trạng thái lỗi: `docs/player-lyrics.md`.
+
+Tìm kiếm và gợi ý không còn giới hạn `videoDuration=medium`: giữ cả bài thường ngắn hơn 2:30 và bài dài. Ứng dụng kiểm tra routing của URL Shorts công khai để loại bản xác định là Shorts, có timeout và cache giới hạn. YouTube Data API không cung cấp cờ `isShort`; khi không xác minh được, ứng dụng giữ video để tránh loại nhầm bài nhạc. Cache MongoDB cũ được giữ nguyên, không xóa hàng loạt.
+
+Trên trang chủ, cả Top Thịnh Hành, Xem nhiều nhất và Mới nhất đều lấy theo thể loại đang chọn. Top dùng tìm kiếm nổi bật theo thể loại, Xem nhiều nhất sắp xếp theo lượt xem, Mới nhất theo ngày đăng; đây không phải bảng xếp hạng thịnh hành chính thức của YouTube. Nhãn thể loại hiện trên cả ba phần. TikTok Remix dùng truy vấn `tiktok remix`, không ghép thêm `ncs`.
+
+## Quyền truy cập và dữ liệu
+
+- API hồ sơ và yêu thích bắt buộc đăng nhập. Chủ sở hữu lấy từ session server; `userId` do client gửi không được dùng để cấp quyền.
+- Playlist, SoundCloud và lịch sử hỗ trợ khách bằng cookie `bcmusic-guest`, do Proxy cấp và ký bằng `NEXTAUTH_SECRET`. Cookie là HttpOnly, SameSite=Lax, Secure trong production. HTTPS và secret ổn định giữa các instance là bắt buộc khi triển khai.
+- Đổi `NEXTAUTH_SECRET` sẽ làm mất hiệu lực session và cookie khách hiện có. Xóa cookie cũng mất quyền truy cập thư viện khách trên thiết bị đó.
+- ID khách cũ trong localStorage và lịch sử cũ có `userId: null` không còn được dùng làm danh tính. Các bản ghi vẫn được giữ trong database; không tự nhận quyền sở hữu hay gán dữ liệu này sang tài khoản/cookie khác.
+
+## Thay đổi schema tương thích dữ liệu cũ
+
+`Favorite` thêm `sourceUrl`; `History` thêm `embedUrl` và `sourceUrl`. Các trường đều tùy chọn; giữ nguyên collection, ID và index hiện có. Không cần migration ghi hàng loạt để chạy phiên bản này.
+
+Bản ghi SoundCloud cũ thiếu URL phát được bổ sung khi đọc từ thư viện cùng chủ sở hữu. Nếu không tìm thấy metadata, ID track dạng `sc_<số>` được dùng để dựng URL phát. ID playlist cũ không có metadata và không còn trong thư viện gốc cần import lại URL SoundCloud vì ID cũ không phân biệt track/playlist.
+
+Ảnh đại diện cũ đã bị ghi đè bằng URL proxy không thể phục hồi ảnh gốc từ URL đó; ứng dụng hiển thị ảnh mặc định để người dùng tải ảnh mới. Đổi tên hồ sơ không gửi trường ảnh và không ghi đè ảnh đang lưu.
+
+Các thay đổi schema nằm trong source; giữ nguyên chuỗi kết nối và dữ liệu hiện có. Khi cần đổi database/nhà cung cấp, sao lưu dữ liệu và lập kế hoạch chuyển đổi riêng.

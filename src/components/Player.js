@@ -1,5 +1,7 @@
 "use client";
 
+import { decodeSongTitle } from '@/lib/song-title';
+
 import { FileText, Heart, Pause, Play, Repeat, Repeat1, Shuffle, SkipBack, SkipForward, Volume2, X } from 'lucide-react';
 import Image from 'next/image';
 import { useEffect, useRef, useState, useCallback } from 'react';
@@ -11,7 +13,6 @@ import { useMusicStore, useSettingsStore } from '@/lib/store';
 export default function Player() {
   const { data: session } = useSession();
   const [isPlaying, setIsPlaying] = useState(false);
-  const [isLyricsOpen, setIsLyricsOpen] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const ytPlayerRef = useRef(null);
@@ -46,10 +47,9 @@ export default function Player() {
       return;
     }
 
-    const userId = session.user.id;
     if (isFavorited) {
       try {
-        const res = await fetch(`/api/favorites?userId=${userId}&songId=${currentSong.id}`, {
+        const res = await fetch(`/api/favorites?songId=${encodeURIComponent(currentSong.id)}`, {
           method: 'DELETE',
         });
         if (res.ok) {
@@ -64,7 +64,6 @@ export default function Player() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            userId,
             song: currentSong,
           }),
         });
@@ -96,6 +95,8 @@ export default function Player() {
         artist: currentSong.artist,
         publishedAt: currentSong.publishedAt,
         lyrics: currentSong.lyrics,
+        embedUrl: currentSong.embedUrl,
+        sourceUrl: currentSong.sourceUrl,
         source: currentSong.source || 'youtube',
       }),
     }).catch((error) => console.log('Unable to save listening history', error));
@@ -104,16 +105,16 @@ export default function Player() {
   // Broadcast play-state to NowPlayingPanel
   useEffect(() => {
     window.dispatchEvent(
-      new CustomEvent('bcmusic:playstate', { detail: { isPlaying } })
+      new CustomEvent('bcmusic:playstate', { detail: { songId: currentSong?.id, isPlaying } })
     );
-  }, [isPlaying]);
+  }, [isPlaying, currentSong?.id]);
 
   // Broadcast time updates to NowPlayingPanel
   useEffect(() => {
     window.dispatchEvent(
-      new CustomEvent('bcmusic:timeupdate', { detail: { currentTime, duration } })
+      new CustomEvent('bcmusic:timeupdate', { detail: { songId: lastSongIdRef.current, currentTime, duration } })
     );
-  }, [currentTime, duration]);
+  }, [currentTime, duration, currentSong?.id]);
 
   // Listen for seek commands from NowPlayingPanel
   useEffect(() => {
@@ -153,7 +154,6 @@ export default function Player() {
       window.removeEventListener('bcmusic:seekto', handleSeekTo);
       window.removeEventListener('bcmusic:toggleplay', handleTogglePlay);
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isSoundCloud, isPlaying]);
 
 
@@ -296,6 +296,23 @@ export default function Player() {
   }, [volume, isSoundCloud]);
 
   // ─── Navigation ────────────────────────────────────────
+  const stopPlayback = useCallback(() => {
+    if (isSoundCloud) scWidgetRef.current?.pause();
+    else ytPlayerRef.current?.pauseVideo?.();
+    setIsPlaying(false);
+  }, [isSoundCloud]);
+
+  const replayTrack = useCallback(() => {
+    if (isSoundCloud && scWidgetRef.current) {
+      scWidgetRef.current.seekTo(0);
+      scWidgetRef.current.play();
+    } else if (ytPlayerRef.current) {
+      ytPlayerRef.current.seekTo(0, true);
+      ytPlayerRef.current.playVideo();
+    }
+    setCurrentTime(0);
+  }, [isSoundCloud]);
+
   const playNext = useCallback(() => {
     if (!playlist.length || !currentSong) return;
     const currentIndex = playlist.findIndex((song) => song.id === currentSong.id);
@@ -303,41 +320,49 @@ export default function Player() {
       // Stop at end of playlist
       const nextIndex = currentIndex + 1;
       if (nextIndex >= playlist.length) {
-        setIsPlaying(false);
+        stopPlayback();
         return;
       }
-      setCurrentSong(playlist[nextIndex]);
+      const next = playlist[nextIndex];
+      if (next.id === currentSong.id) replayTrack();
+      else setCurrentSong(next);
     } else {
       // repeat 'all': wrap around
       const nextIndex = currentIndex === -1 ? 0 : (currentIndex + 1) % playlist.length;
-      setCurrentSong(playlist[nextIndex]);
+      const next = playlist[nextIndex];
+      if (next.id === currentSong.id) replayTrack();
+      else setCurrentSong(next);
     }
-  }, [playlist, currentSong, setCurrentSong, repeatMode]);
+  }, [playlist, currentSong, setCurrentSong, repeatMode, stopPlayback, replayTrack]);
 
-  const playPrev = () => {
+  const playPrev = useCallback(() => {
     if (!playlist.length || !currentSong) return;
     const currentIndex = playlist.findIndex((song) => song.id === currentSong.id);
     const prevIndex = currentIndex === -1 ? 0 : (currentIndex - 1 + playlist.length) % playlist.length;
-    setCurrentSong(playlist[prevIndex]);
-  };
+    const previous = playlist[prevIndex];
+    if (previous.id === currentSong.id) replayTrack();
+    else setCurrentSong(previous);
+  }, [playlist, currentSong, setCurrentSong, replayTrack]);
+
+  // Both control surfaces use this player as the single media controller.
+  useEffect(() => {
+    window.addEventListener('bcmusic:next', playNext);
+    window.addEventListener('bcmusic:previous', playPrev);
+    return () => {
+      window.removeEventListener('bcmusic:next', playNext);
+      window.removeEventListener('bcmusic:previous', playPrev);
+    };
+  }, [playNext, playPrev]);
 
   // Handle end-of-track (called by both YouTube and SoundCloud)
   const handleTrackEnd = useCallback(() => {
     if (repeatMode === 'one') {
-      // Replay the same track
-      if (isSoundCloud && scWidgetRef.current) {
-        scWidgetRef.current.seekTo(0);
-        scWidgetRef.current.play();
-      } else if (ytPlayerRef.current) {
-        ytPlayerRef.current.seekTo(0, true);
-        ytPlayerRef.current.playVideo();
-      }
-      setCurrentTime(0);
+      replayTrack();
     } else {
       setIsPlaying(false);
       playNext();
     }
-  }, [repeatMode, isSoundCloud, playNext]);
+  }, [repeatMode, replayTrack, playNext]);
 
   // Keep ref in sync so event-listener closures always call the latest version
   useEffect(() => {
@@ -347,6 +372,7 @@ export default function Player() {
   // ─── YouTube: Player ready ─────────────────────────────
   const onPlayerReady = (event) => {
     ytPlayerRef.current = event.target;
+    window.dispatchEvent(new CustomEvent('bcmusic:playerror', { detail: { songId: currentSong?.id, code: null } }));
     event.target.setVolume(volume);
     event.target.setPlaybackRate?.(playbackRate);
     if (currentSong) event.target.playVideo();
@@ -409,42 +435,6 @@ export default function Player() {
 
   return (
     <div className="player-shell">
-      {isLyricsOpen && (
-        <section className="lyrics-panel fixed bottom-40 right-4 z-[60] max-h-[50vh] w-[min(24rem,calc(100vw-2rem))] overflow-hidden rounded-3xl p-5">
-          <div className="mb-4 flex items-start justify-between gap-4">
-            <div>
-              <p className="text-sm font-semibold uppercase tracking-[0.25em] text-pink-400">
-                {t.lyrics.title}
-              </p>
-              <h2
-                className="mt-1 line-clamp-2 text-lg font-bold"
-                dangerouslySetInnerHTML={{ __html: currentSong.title }}
-              />
-            </div>
-            <button
-              type="button"
-              aria-label={t.lyrics.close}
-              onClick={() => setIsLyricsOpen(false)}
-              className="rounded-full p-2 text-[var(--muted-text)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--app-text)]"
-            >
-              <X size={18} />
-            </button>
-          </div>
-
-          {currentSong.lyrics ? (
-            <div className="max-h-[42vh] overflow-y-auto whitespace-pre-line text-sm leading-7 text-[var(--app-text)]">
-              {currentSong.lyrics}
-            </div>
-          ) : (
-            <div className="rounded-2xl border border-dashed border-pink-400/35 bg-pink-500/10 p-4">
-              <p className="font-bold text-pink-400">{t.lyrics.unavailableTitle}</p>
-              <p className="muted-text mt-2 text-sm leading-6">{t.lyrics.unavailableDescription}</p>
-              <p className="mt-3 text-xs font-semibold text-cyan-400">{t.lyrics.hint}</p>
-            </div>
-          )}
-        </section>
-      )}
-
       {/* ─── Hidden Players ──────────────────────────────── */}
 
       {/* YouTube Player (only rendered for YouTube tracks) */}
@@ -454,6 +444,10 @@ export default function Player() {
             videoId={currentSong.id}
             opts={{ playerVars: { autoplay: 1, controls: 0, rel: 0 } }}
             onReady={onPlayerReady}
+            onError={(event) => {
+              setIsPlaying(false);
+              window.dispatchEvent(new CustomEvent('bcmusic:playerror', { detail: { songId: currentSong.id, code: event.data } }));
+            }}
             onStateChange={(event) => {
               if (event.data === 1) {
                 if (lastSongIdRef.current !== currentSong.id) {
@@ -509,8 +503,8 @@ export default function Player() {
           <div className="player-song-text">
             <div className="player-title-marquee font-semibold text-[var(--app-text)]">
               <div className="player-title-track">
-                <span className="player-title-copy" dangerouslySetInnerHTML={{ __html: currentSong.title }} />
-                <span className="player-title-copy" aria-hidden="true" dangerouslySetInnerHTML={{ __html: currentSong.title }} />
+                <span className="player-title-copy">{decodeSongTitle(currentSong.title)}</span>
+                <span className="player-title-copy" aria-hidden="true">{decodeSongTitle(currentSong.title)}</span>
               </div>
             </div>
             <p className="muted-text truncate text-xs">
@@ -619,8 +613,8 @@ export default function Player() {
           <button
             type="button"
             aria-label={t.lyrics.open}
-            onClick={() => setIsLyricsOpen((value) => !value)}
-            className={`player-control-btn ${isLyricsOpen ? 'text-pink-400' : 'muted-text'}`}
+            onClick={() => setNowPlayingOpen(true)}
+            className="player-control-btn muted-text"
           >
             <FileText size={18} />
           </button>

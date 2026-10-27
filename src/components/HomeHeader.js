@@ -42,7 +42,7 @@ export default function HomeHeader({ categories, currentQuery, currentSearch }) 
           </Link>
           <div className="home-header-brand-text">
             <h1 className="home-header-title">{t.common.brand}</h1>
-            <p className="home-header-greeting">{greeting}</p>
+            <p data-motion-intro className="home-header-greeting">{greeting}</p>
           </div>
         </div>
 
@@ -65,7 +65,7 @@ export default function HomeHeader({ categories, currentQuery, currentSearch }) 
 
       {/* Category Pills */}
       {!currentSearch && (
-        <div className="home-header-categories">
+        <div data-motion-intro className="home-header-categories">
           <CategoryScroller categories={categories} currentQuery={currentQuery} />
         </div>
       )}

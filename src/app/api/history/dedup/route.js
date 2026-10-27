@@ -1,7 +1,7 @@
 import { getServerSession } from 'next-auth';
 import dbConnect from '@/lib/mongodb';
 import History from '@/models/History';
-import { authOptions } from '@/app/api/auth/[...nextauth]/route';
+import { authOptions } from '@/lib/auth';
 import { NextResponse } from 'next/server';
 
 // Xóa các bản ghi duplicate trong history của user hiện tại

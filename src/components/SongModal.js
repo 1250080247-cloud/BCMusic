@@ -1,37 +1,23 @@
 "use client";
 
+import { decodeSongTitle } from '@/lib/song-title';
+
 import { Check, ExternalLink, FileText, ListPlus, Play, Radio, X } from 'lucide-react';
 import Image from 'next/image';
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import { formatDate, formatDateTime, getDictionary } from '@/lib/i18n';
-import { useMusicStore, useSettingsStore, useUserStore } from '@/lib/store';
+import { useMusicStore, useSettingsStore } from '@/lib/store';
 
 export default function SongModal() {
   const { data: session } = useSession();
-  const { viewingSong, setViewingSong, setCurrentSong } = useMusicStore();
+  const { viewingSong, viewingPlaylist, setViewingSong, startPlayback } = useMusicStore();
   const language = useSettingsStore((state) => state.language);
-  const getUserId = useUserStore((state) => state.getUserId);
   const t = getDictionary(language);
-
-  const getEffectiveUserId = useCallback(() => {
-    return session?.user?.id || getUserId();
-  }, [session, getUserId]);
 
   const [showPlaylistMenu, setShowPlaylistMenu] = useState(false);
   const [playlists, setPlaylists] = useState([]);
   const [feedback, setFeedback] = useState(null);
-
-  const fetchPlaylists = useCallback(async () => {
-    const userId = getEffectiveUserId();
-    try {
-      const res = await fetch(`/api/playlist?userId=${encodeURIComponent(userId)}`);
-      const data = await res.json();
-      if (data.success) setPlaylists(data.data);
-    } catch (error) {
-      console.error('Failed to fetch playlists:', error);
-    }
-  }, [getEffectiveUserId]);
 
   useEffect(() => {
     if (!showPlaylistMenu) return;
@@ -39,9 +25,8 @@ export default function SongModal() {
     let cancelled = false;
 
     async function load() {
-      const userId = getEffectiveUserId();
       try {
-        const res = await fetch(`/api/playlist?userId=${encodeURIComponent(userId)}`);
+        const res = await fetch('/api/playlist');
         const data = await res.json();
         if (!cancelled && data.success) setPlaylists(data.data);
       } catch (error) {
@@ -51,16 +36,14 @@ export default function SongModal() {
 
     load();
     return () => { cancelled = true; };
-  }, [showPlaylistMenu, getEffectiveUserId]);
+  }, [showPlaylistMenu, session?.user?.id]);
 
   const handleAddToPlaylist = async (playlistId, playlistName) => {
-    const userId = getEffectiveUserId();
     try {
       const res = await fetch('/api/playlist/song', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          userId,
           playlistId,
           song: {
             id: viewingSong.id,
@@ -153,7 +136,7 @@ export default function SongModal() {
               <button
                 type="button"
                 onClick={() => {
-                  setCurrentSong(viewingSong);
+                  startPlayback(viewingSong, viewingPlaylist);
                   closeModal();
                 }}
                 className="flex flex-1 items-center justify-center gap-2 rounded-full bg-gradient-to-r from-purple-500 to-pink-600 px-5 py-3 font-bold text-white transition-all hover:scale-[1.02] hover:from-purple-400 hover:to-pink-500"
@@ -236,9 +219,7 @@ export default function SongModal() {
               {t.modal.details}
             </p>
             <h2
-              className="mb-5 text-2xl font-extrabold leading-tight text-[var(--app-text)]"
-              dangerouslySetInnerHTML={{ __html: viewingSong.title }}
-            />
+              className="mb-5 text-2xl font-extrabold leading-tight text-[var(--app-text)]">{decodeSongTitle(viewingSong.title)}</h2>
 
             <div className="grid gap-3">
               {songDetails.map((item) => {

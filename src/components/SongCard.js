@@ -1,11 +1,13 @@
 "use client";
 
+import { decodeSongTitle } from '@/lib/song-title';
+
 import Image from 'next/image';
 import { formatDate, formatDateTime, formatViewCount, getDictionary } from '@/lib/i18n';
 import { useMusicStore, useSettingsStore } from '@/lib/store';
 
 export default function SongCard({ song, playlist }) {
-  const { setCurrentSong, setViewingSong, setPlaylist } = useMusicStore();
+  const { startPlayback, setViewingSong } = useMusicStore();
   const language = useSettingsStore((state) => state.language);
   const t = getDictionary(language);
   const hasHistoryMeta = Boolean(song.listenedAt);
@@ -23,13 +25,11 @@ export default function SongCard({ song, playlist }) {
       : '';
 
   const activateSong = () => {
-    setViewingSong(song);
-    setPlaylist(playlist);
+    setViewingSong(song, playlist);
   };
 
   const playSong = () => {
-    setCurrentSong(song);
-    setPlaylist(playlist);
+    startPlayback(song, playlist);
   };
 
   return (
@@ -56,9 +56,7 @@ export default function SongCard({ song, playlist }) {
 
         <div className="flex min-w-0 flex-1 flex-col justify-center">
           <h3
-            className="line-clamp-2 text-lg font-bold text-[var(--app-text)] transition-colors group-hover:text-pink-400 sm:text-xl"
-            dangerouslySetInnerHTML={{ __html: song.title }}
-          />
+            className="line-clamp-2 text-lg font-bold text-[var(--app-text)] transition-colors group-hover:text-pink-400 sm:text-xl">{decodeSongTitle(song.title)}</h3>
           <p className="muted-text mt-2 text-sm sm:text-base">{primaryMeta}</p>
           {secondaryMeta && (
             <p className="mt-1 truncate text-xs font-medium text-pink-400/90 sm:text-sm">{secondaryMeta}</p>

@@ -1,17 +1,20 @@
 "use client";
 
+import MotionList from '@/components/MotionList';
+
 import { AlertCircle, Check, CloudDownload, ExternalLink, Loader2, Music, Plus, Trash2, X } from 'lucide-react';
 import Image from 'next/image';
+import { useSession } from 'next-auth/react';
 import { useCallback, useEffect, useState } from 'react';
 import SettingsPanel from '@/components/SettingsPanel';
 import AuthModal from '@/components/AuthModal';
 import { formatDateTime, getDictionary } from '@/lib/i18n';
-import { useMusicStore, useSettingsStore, useUserStore } from '@/lib/store';
+import { useMusicStore, useSettingsStore } from '@/lib/store';
 
 export default function SoundCloudLibrary() {
   const language = useSettingsStore((state) => state.language);
-  const getUserId = useUserStore((state) => state.getUserId);
-  const { setCurrentSong, setViewingSong, setPlaylist } = useMusicStore();
+  const { data: session } = useSession();
+  const { startPlayback, setViewingSong } = useMusicStore();
   const t = getDictionary(language);
   const sc = t.soundcloud;
 
@@ -26,9 +29,8 @@ export default function SoundCloudLibrary() {
     let cancelled = false;
 
     async function load() {
-      const userId = getUserId();
       try {
-        const res = await fetch(`/api/soundcloud/import?userId=${encodeURIComponent(userId)}`);
+        const res = await fetch('/api/soundcloud/import');
         const data = await res.json();
         if (!cancelled && data.success) setTracks(data.data);
       } catch (error) {
@@ -40,7 +42,7 @@ export default function SoundCloudLibrary() {
 
     load();
     return () => { cancelled = true; };
-  }, [getUserId]);
+  }, [session?.user?.id]);
 
   const showFeedback = useCallback((type, text) => {
     setFeedback({ type, text });
@@ -56,11 +58,10 @@ export default function SoundCloudLibrary() {
     setFeedback(null);
 
     try {
-      const userId = getUserId();
       const res = await fetch('/api/soundcloud/import', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, url }),
+        body: JSON.stringify({ url }),
       });
       const data = await res.json();
 
@@ -84,12 +85,11 @@ export default function SoundCloudLibrary() {
   };
 
   const handleDelete = async (scId) => {
-    const userId = getUserId();
     try {
       const res = await fetch('/api/soundcloud/import', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, scId }),
+        body: JSON.stringify({ scId }),
       });
       const data = await res.json();
       if (data.success) {
@@ -101,8 +101,7 @@ export default function SoundCloudLibrary() {
   };
 
   const handlePlayTrack = (track) => {
-    setCurrentSong(track);
-    setPlaylist(tracks);
+    startPlayback(track, tracks);
   };
 
   return (
@@ -210,7 +209,7 @@ export default function SoundCloudLibrary() {
               </div>
             </div>
 
-            <div className="flex flex-col gap-3">
+            <MotionList animationKey={tracks.map((item) => item.id).join('|')} className="flex flex-col gap-3">
               {tracks.map((track) => (
                 <div
                   key={track.id}
@@ -240,7 +239,7 @@ export default function SoundCloudLibrary() {
                     {/* Info */}
                     <div
                       className="min-w-0 flex-1"
-                      onClick={() => setViewingSong(track)}
+                      onClick={() => setViewingSong(track, tracks)}
                       onDoubleClick={() => handlePlayTrack(track)}
                     >
                       <h3 className="line-clamp-2 text-base font-bold text-[var(--app-text)] transition-colors group-hover:text-orange-400 sm:text-lg">
@@ -280,7 +279,7 @@ export default function SoundCloudLibrary() {
                   </div>
                 </div>
               ))}
-            </div>
+            </MotionList>
           </>
         )}
       </section>

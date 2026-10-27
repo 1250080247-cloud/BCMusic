@@ -1,22 +1,23 @@
 import dbConnect from '@/lib/mongodb';
+import { isAllowedAvatar } from '@/lib/avatar';
 import User from '@/models/User';
 import { NextResponse } from 'next/server';
 
 export async function GET(request) {
   try {
-    await dbConnect();
     const { searchParams } = new URL(request.url);
     const userId = searchParams.get('userId');
 
-    if (!userId) {
+    if (!userId || !/^[a-f0-9]{24}$/i.test(userId)) {
       return new Response('Missing userId', { status: 400 });
     }
 
+    await dbConnect();
     const user = await User.findById(userId).lean();
     const image = user?.image;
 
     // 1. Nếu không có hình ảnh, trả về SVG mặc định
-    if (!image) {
+    if (!image || !isAllowedAvatar(image)) {
       const svg = `
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="#94a3b8" width="128" height="128">
           <circle cx="12" cy="12" r="12" fill="#1e293b"/>
@@ -38,6 +39,7 @@ export async function GET(request) {
         return new Response(buffer, {
           headers: {
             'Content-Type': contentType,
+            'X-Content-Type-Options': 'nosniff',
             'Cache-Control': 'public, max-age=86400',
           },
         });

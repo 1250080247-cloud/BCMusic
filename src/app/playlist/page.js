@@ -1,50 +1,35 @@
 "use client";
 
+import MotionList from '@/components/MotionList';
+
+import { decodeSongTitle } from '@/lib/song-title';
+
 import { ChevronDown, ChevronUp, ListMusic, Music, Play, Plus, Trash2, X } from 'lucide-react';
 import Image from 'next/image';
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import SettingsPanel from '@/components/SettingsPanel';
 import AuthModal from '@/components/AuthModal';
 import { formatDateTime, getDictionary } from '@/lib/i18n';
-import { useMusicStore, useSettingsStore, useUserStore } from '@/lib/store';
+import { useMusicStore, useSettingsStore } from '@/lib/store';
 
 export default function PlaylistPage() {
   const { data: session } = useSession();
   const language = useSettingsStore((state) => state.language);
-  const getUserId = useUserStore((state) => state.getUserId);
-  const { setCurrentSong, setViewingSong, setPlaylist } = useMusicStore();
+  const { startPlayback, setViewingSong } = useMusicStore();
   const t = getDictionary(language);
-
-  const getEffectiveUserId = useCallback(() => {
-    return session?.user?.id || getUserId();
-  }, [session, getUserId]);
 
   const [playlists, setPlaylists] = useState([]);
   const [newName, setNewName] = useState('');
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState(null);
 
-  const fetchPlaylists = useCallback(async () => {
-    const userId = getEffectiveUserId();
-    try {
-      const res = await fetch(`/api/playlist?userId=${encodeURIComponent(userId)}`);
-      const data = await res.json();
-      if (data.success) setPlaylists(data.data);
-    } catch (error) {
-      console.error('Failed to fetch playlists:', error);
-    } finally {
-      setLoading(false);
-    }
-  }, [getEffectiveUserId]);
-
   useEffect(() => {
     let cancelled = false;
 
     async function load() {
-      const userId = getEffectiveUserId();
       try {
-        const res = await fetch(`/api/playlist?userId=${encodeURIComponent(userId)}`);
+        const res = await fetch('/api/playlist');
         const data = await res.json();
         if (!cancelled && data.success) setPlaylists(data.data);
       } catch (error) {
@@ -56,19 +41,17 @@ export default function PlaylistPage() {
 
     load();
     return () => { cancelled = true; };
-  }, [getEffectiveUserId]);
+  }, [session?.user?.id]);
 
   const handleCreate = async (event) => {
     event.preventDefault();
     const trimmed = newName.trim();
     if (!trimmed) return;
-
-    const userId = getEffectiveUserId();
     try {
       const res = await fetch('/api/playlist', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, name: trimmed }),
+        body: JSON.stringify({ name: trimmed }),
       });
       const data = await res.json();
       if (data.success) {
@@ -81,12 +64,11 @@ export default function PlaylistPage() {
   };
 
   const handleDelete = async (playlistId) => {
-    const userId = getEffectiveUserId();
     try {
       const res = await fetch('/api/playlist', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, playlistId }),
+        body: JSON.stringify({ playlistId }),
       });
       const data = await res.json();
       if (data.success) {
@@ -99,12 +81,11 @@ export default function PlaylistPage() {
   };
 
   const handleRemoveSong = async (playlistId, songId) => {
-    const userId = getEffectiveUserId();
     try {
       const res = await fetch('/api/playlist/song', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, playlistId, songId }),
+        body: JSON.stringify({ playlistId, songId }),
       });
       const data = await res.json();
       if (data.success) {
@@ -122,8 +103,7 @@ export default function PlaylistPage() {
 
   const handlePlayAll = (playlist) => {
     if (!playlist.songs.length) return;
-    setCurrentSong(playlist.songs[0]);
-    setPlaylist(playlist.songs);
+    startPlayback(playlist.songs[0], playlist.songs);
   };
 
   return (
@@ -188,7 +168,7 @@ export default function PlaylistPage() {
             <p className="muted-text">{t.playlist.emptyDescription}</p>
           </div>
         ) : (
-          <div className="flex flex-col gap-4">
+          <MotionList animationKey={playlists.map((item) => item.id).join('|')} className="flex flex-col gap-4">
             {playlists.map((pl) => {
               const isExpanded = expandedId === pl.id;
 
@@ -267,13 +247,11 @@ export default function PlaylistPage() {
                               <div className="min-w-0 flex-1">
                                 <button
                                   type="button"
-                                  onClick={() => setViewingSong(song)}
+                                  onClick={() => setViewingSong(song, pl.songs)}
                                   className="text-left"
                                 >
                                   <p
-                                    className="line-clamp-1 text-sm font-semibold transition-colors group-hover:text-pink-400"
-                                    dangerouslySetInnerHTML={{ __html: song.title }}
-                                  />
+                                    className="line-clamp-1 text-sm font-semibold transition-colors group-hover:text-pink-400">{decodeSongTitle(song.title)}</p>
                                 </button>
                                 <p className="muted-text truncate text-xs">{song.artist}</p>
                               </div>
@@ -281,8 +259,7 @@ export default function PlaylistPage() {
                                 <button
                                   type="button"
                                   onClick={() => {
-                                    setCurrentSong(song);
-                                    setPlaylist(pl.songs);
+                                    startPlayback(song, pl.songs);
                                   }}
                                   className="flex h-8 w-8 items-center justify-center rounded-full text-[var(--muted-text)] opacity-0 transition hover:text-[var(--app-text)] group-hover:opacity-100"
                                   aria-label={t.modal.playNow}
@@ -308,7 +285,7 @@ export default function PlaylistPage() {
                 </div>
               );
             })}
-          </div>
+          </MotionList>
         )}
       </section>
     </main>

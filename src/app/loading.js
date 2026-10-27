@@ -24,7 +24,7 @@ export default function Loading() {
             <div
               key={i}
               className="skeleton-pulse h-10 flex-shrink-0 rounded-full"
-              style={{ width: `${70 + Math.random() * 40}px` }}
+              style={{ width: `${70 + (i * 13) % 40}px` }}
             />
           ))}
         </div>
