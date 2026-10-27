@@ -8,6 +8,7 @@ const CachedSongSchema = new mongoose.Schema(
     thumbnail: { type: String },
     publishedAt: { type: String },
     viewCount: { type: String },
+    durationSeconds: { type: Number },
   },
   { _id: false }
 );
@@ -37,6 +38,8 @@ const SongCacheSchema = new mongoose.Schema({
     type: [CachedSongSchema],
     default: [],
   },
+  // Only derived YouTube cache data; old entries are verified on their next read.
+  shortsFiltered: { type: Boolean, default: false },
   nextPageToken: {
     type: String,
     default: null,

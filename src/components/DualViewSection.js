@@ -1,6 +1,7 @@
 "use client";
 
 import MotionList from '@/components/MotionList';
+import MusicRowSkeleton from '@/components/MusicRowSkeleton';
 
 import { decodeSongTitle } from '@/lib/song-title';
 
@@ -55,54 +56,37 @@ function HorizontalSongRow({ songs, playlist }) {
   );
 }
 
-export default function DualViewSection({ mostViewedSongs, newestSongs, genreKey }) {
+export function SongRowSection({ songs, genreKey, kind, isLoading = false }) {
   const language = useSettingsStore((state) => state.language);
   const t = getDictionary(language);
   const genre = genreKey ? t.home.categories[genreKey] : '';
-
+  const mostViewed = kind === 'mostViewed';
   return (
-    <div className="flex flex-col gap-8">
-      {/* Most Viewed Section — horizontal scroll */}
-      <section data-motion-section>
+      <section data-motion-section aria-busy={isLoading}>
         <div className="mb-4 flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-orange-500/15 text-orange-400">
-            <Eye size={18} />
+          <div className={`flex h-9 w-9 items-center justify-center rounded-xl ${mostViewed ? 'bg-orange-500/15 text-orange-400' : 'bg-emerald-500/15 text-emerald-400'}`}>
+            {mostViewed ? <Eye size={18} /> : <Sparkles size={18} />}
           </div>
           <h2 className="section-header text-lg font-extrabold sm:text-xl">
-            {t.dualView.mostViewed}
+            {mostViewed ? t.dualView.mostViewed : t.dualView.newest}
             {genre && <span className="text-sm font-medium opacity-60"> · {genre}</span>}
           </h2>
         </div>
 
-        {mostViewedSongs.length === 0 ? (
+        {isLoading ? <><p className="sr-only" role="status">{language === 'vi' ? 'Đang tải nhạc…' : 'Loading music…'}</p><MusicRowSkeleton /></> : songs.length === 0 ? (
           <div className="surface-card rounded-3xl p-8 text-center">
             <p className="muted-text text-sm">{t.home.noSongsDescription}</p>
           </div>
         ) : (
-          <HorizontalSongRow songs={mostViewedSongs} playlist={mostViewedSongs} />
+          <HorizontalSongRow songs={songs} playlist={songs} />
         )}
       </section>
-
-      {/* Newest Section — horizontal scroll */}
-      <section data-motion-section>
-        <div className="mb-4 flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-500/15 text-emerald-400">
-            <Sparkles size={18} />
-          </div>
-          <h2 className="section-header text-lg font-extrabold sm:text-xl">
-            {t.dualView.newest}
-            {genre && <span className="text-sm font-medium opacity-60"> · {genre}</span>}
-          </h2>
-        </div>
-
-        {newestSongs.length === 0 ? (
-          <div className="surface-card rounded-3xl p-8 text-center">
-            <p className="muted-text text-sm">{t.home.noSongsDescription}</p>
-          </div>
-        ) : (
-          <HorizontalSongRow songs={newestSongs} playlist={newestSongs} />
-        )}
-      </section>
-    </div>
   );
+}
+
+export default function DualViewSection({ mostViewedSongs, newestSongs, genreKey }) {
+  return <div className="flex flex-col gap-8">
+    <SongRowSection songs={mostViewedSongs} genreKey={genreKey} kind="mostViewed" />
+    <SongRowSection songs={newestSongs} genreKey={genreKey} kind="newest" />
+  </div>;
 }

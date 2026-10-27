@@ -1,4 +1,5 @@
-import DualViewSection from "@/components/DualViewSection";
+import { Suspense } from 'react';
+import { SongRowSection } from "@/components/DualViewSection";
 import GenreExplorer from "@/components/GenreExplorer";
 import HomeEmptyState from "@/components/HomeEmptyState";
 import HomeHeader from "@/components/HomeHeader";
@@ -7,9 +8,23 @@ import RankingSection from "@/components/RankingSection";
 import SongCard from "@/components/SongCard";
 import { getYouTubeSongs } from "@/lib/youtube";
 
-// ISR: Next.js sẽ tái tạo trang tối đa mỗi 30 phút
-// Kết hợp với MongoDB cache (1 giờ), trang sẽ load cực nhanh
+// The category URL is dynamic; MongoDB caches each feed for one hour.
 export const revalidate = 1800;
+
+async function LoadedRanking({ result, genreKey }) {
+  const data = await result;
+  return <RankingSection songs={data.items} genreKey={genreKey} />;
+}
+
+async function LoadedRow({ result, genreKey, kind }) {
+  const data = await result;
+  return <SongRowSection songs={data.items} genreKey={genreKey} kind={kind} />;
+}
+
+async function LoadedPagination({ result, currentQuery }) {
+  const data = await result;
+  return <PaginationControls currentQuery={currentQuery} prevPageToken={data.prevPageToken} nextPageToken={data.nextPageToken} />;
+}
 
 const categories = [
   { key: "tiktokRemix", query: "tiktok remix" },
@@ -40,9 +55,9 @@ export default async function Home({ searchParams }) {
   let searchSongs = [];
   let searchNextToken = null;
   let searchPrevToken = null;
-  let mostViewedSongs = [];
-  let newestSongs = [];
-  let rankingSongs = [];
+  let mostViewedResult;
+  let newestResult;
+  let rankingResult;
 
   if (isSearchMode) {
     // Search mode: sort by relevance so newer songs also appear
@@ -51,18 +66,12 @@ export default async function Home({ searchParams }) {
     searchNextToken = result.nextPageToken;
     searchPrevToken = result.prevPageToken;
   } else {
-    // Category mode: fetch most viewed + newest in parallel, plus ranking
-    const [mostViewedResult, newestResult, rankingResult] = await Promise.all([
+    // Start all feeds together, then stream each without waiting for the slowest.
+    [mostViewedResult, newestResult, rankingResult] = [
       getYouTubeSongs(currentQuery, currentToken, "viewCount", 5),
       getYouTubeSongs(currentQuery, "", "date", 5),
-      currentToken ? Promise.resolve({ items: [] }) : getYouTubeSongs(`${currentQuery} trending`, "", "relevance", 10),
-    ]);
-
-    mostViewedSongs = mostViewedResult.items;
-    searchNextToken = mostViewedResult.nextPageToken;
-    searchPrevToken = mostViewedResult.prevPageToken;
-    newestSongs = newestResult.items;
-    rankingSongs = rankingResult.items;
+      currentToken ? null : getYouTubeSongs(`${currentQuery} trending`, "", "relevance", 10),
+    ];
   }
 
   return (
@@ -75,7 +84,9 @@ export default async function Home({ searchParams }) {
 
       {/* Ranking — only when not searching and on first page */}
       {!isSearchMode && !currentToken && (
-        <RankingSection songs={rankingSongs} genreKey={genreKey} />
+        <Suspense key={`ranking:${currentQuery}`} fallback={<RankingSection songs={[]} genreKey={genreKey} isLoading />}>
+          <LoadedRanking result={rankingResult} genreKey={genreKey} />
+        </Suspense>
       )}
 
       <section className="mx-auto px-4 sm:px-8" style={{ maxWidth: '80rem' }}>
@@ -101,14 +112,17 @@ export default async function Home({ searchParams }) {
           </>
         ) : (
           <>
-            {/* Dual View: Most Viewed + Newest */}
-            <DualViewSection mostViewedSongs={mostViewedSongs} newestSongs={newestSongs} genreKey={genreKey} />
-
-            <PaginationControls
-              currentQuery={currentQuery}
-              prevPageToken={searchPrevToken}
-              nextPageToken={searchNextToken}
-            />
+            <div className="flex flex-col gap-8">
+              <Suspense key={`mostViewed:${currentQuery}:${currentToken}`} fallback={<SongRowSection songs={[]} genreKey={genreKey} kind="mostViewed" isLoading />}>
+                <LoadedRow result={mostViewedResult} genreKey={genreKey} kind="mostViewed" />
+              </Suspense>
+              <Suspense key={`newest:${currentQuery}`} fallback={<SongRowSection songs={[]} genreKey={genreKey} kind="newest" isLoading />}>
+                <LoadedRow result={newestResult} genreKey={genreKey} kind="newest" />
+              </Suspense>
+            </div>
+            <Suspense key={`pagination:${currentQuery}:${currentToken}`} fallback={null}>
+              <LoadedPagination result={mostViewedResult} currentQuery={currentQuery} />
+            </Suspense>
           </>
         )}
       </section>

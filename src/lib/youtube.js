@@ -3,6 +3,8 @@ import SongCache from '@/models/SongCache';
 import { parseYouTubeDuration, removeYouTubeShorts } from '@/lib/youtube-shorts';
 
 const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour in milliseconds
+const inFlight = new Map();
+const emptyResult = () => ({ items: [], nextPageToken: null, prevPageToken: null });
 
 /**
  * Build a unique cache key from query parameters.
@@ -19,18 +21,18 @@ function buildCacheKey(query, order, maxResults, pageToken) {
  */
 async function fetchFromYouTube(searchQuery, pageToken = '', order = 'relevance', maxResults = 5) {
   const API_KEY = process.env.YOUTUBE_API_KEY;
-  if (!API_KEY) return { items: [], nextPageToken: null, prevPageToken: null };
+  if (!API_KEY) return null;
 
   const tokenParam = pageToken ? `&pageToken=${pageToken}` : '';
   const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=${maxResults}&q=${encodeURIComponent(searchQuery)}&type=video&order=${order}&key=${API_KEY}${tokenParam}`;
 
   try {
-    const res = await fetch(url, { cache: 'no-store' });
+    const res = await fetch(url, { cache: 'no-store', signal: AbortSignal.timeout(6000) });
     const data = await res.json();
 
     if (!res.ok) {
       console.error('YouTube API Error:', data.error?.message);
-      return { items: [], nextPageToken: null, prevPageToken: null };
+      return null;
     }
 
     const filteredItems = (data.items || []).filter((item) => item.id?.videoId);
@@ -42,7 +44,7 @@ async function fetchFromYouTube(searchQuery, pageToken = '', order = 'relevance'
     if (videoIds) {
       try {
         const statsUrl = `https://www.googleapis.com/youtube/v3/videos?part=statistics,contentDetails&id=${videoIds}&key=${API_KEY}`;
-        const statsRes = await fetch(statsUrl, { cache: 'no-store' });
+        const statsRes = await fetch(statsUrl, { cache: 'no-store', signal: AbortSignal.timeout(2500) });
         const statsData = await statsRes.json();
         if (statsRes.ok && statsData.items) {
           for (const v of statsData.items) {
@@ -51,7 +53,7 @@ async function fetchFromYouTube(searchQuery, pageToken = '', order = 'relevance'
           }
         }
       } catch (statsError) {
-        console.error('YouTube Stats Fetch Error:', statsError);
+        console.error('YouTube statistics unavailable:', statsError.name);
       }
     }
 
@@ -72,49 +74,44 @@ async function fetchFromYouTube(searchQuery, pageToken = '', order = 'relevance'
       prevPageToken: data.prevPageToken || null,
     };
   } catch (error) {
-    console.error('YouTube Fetch Error:', error);
-    return { items: [], nextPageToken: null, prevPageToken: null };
+    console.error('YouTube search unavailable:', error.name);
+    return null;
   }
 }
 
 /**
- * Get songs with MongoDB caching layer.
- * 1. Check MongoDB for a cached result that is still fresh (< 1 hour old).
- * 2. If found, return it instantly (no YouTube API call).
- * 3. If not found or expired, call YouTube API, save to MongoDB, then return.
- *
- * This dramatically reduces YouTube API quota usage:
- * - Without cache: 300 quota points per page load
- * - With cache: 300 quota points per HOUR (regardless of traffic)
+ * Read the one-hour MongoDB cache before contacting YouTube. Legacy entries
+ * are filtered once without extending their expiry. Verified entries, including
+ * successful empty results, need no further provider calls during that hour.
  */
-export async function getYouTubeSongs(searchQuery, pageToken = '', order = 'relevance', maxResults = 5) {
-  const cacheKey = buildCacheKey(searchQuery, order, maxResults, pageToken);
-
+async function loadSongs(cacheKey, searchQuery, pageToken, order, maxResults) {
+  let cached = null;
+  let cacheAvailable = false;
   try {
     await dbConnect();
+    cached = await SongCache.findOne({ cacheKey }).lean();
+    cacheAvailable = true;
+  } catch {
+    console.error('YouTube cache read unavailable; using the provider.');
+  }
 
-    // Step 1: Check cache
-    const cached = await SongCache.findOne({ cacheKey }).lean();
-
-    if (cached) {
-      const age = Date.now() - new Date(cached.cachedAt).getTime();
-      if (age < CACHE_TTL_MS) {
-        // Cache hit! Return cached data without calling YouTube
-        console.log(`[Cache HIT] "${searchQuery}" (${order}) — saved 100 quota points`);
-        return {
-          items: await removeYouTubeShorts(cached.songs || []),
-          nextPageToken: cached.nextPageToken,
-          prevPageToken: cached.prevPageToken,
-        };
-      }
+  if (cached && Date.now() - new Date(cached.cachedAt).getTime() < CACHE_TTL_MS) {
+    const items = cached.shortsFiltered ? cached.songs || [] : await removeYouTubeShorts(cached.songs || []);
+    if (!cached.shortsFiltered) {
+      try {
+        // Keep the original expiry and avoid overwriting a concurrent refresh.
+        await SongCache.findOneAndUpdate({ cacheKey, cachedAt: cached.cachedAt }, {
+          $set: { songs: items, shortsFiltered: true },
+        });
+      } catch { console.error('YouTube cache metadata update unavailable.'); }
     }
+    return { items, nextPageToken: cached.nextPageToken, prevPageToken: cached.prevPageToken };
+  }
 
-    // Step 2: Cache miss or expired — fetch from YouTube
-    console.log(`[Cache MISS] "${searchQuery}" (${order}) — calling YouTube API`);
-    const result = await fetchFromYouTube(searchQuery, pageToken, order, maxResults);
-
-    // Step 3: Save to MongoDB (upsert so we update if key exists)
-    if (result.items.length > 0) {
+  const result = await fetchFromYouTube(searchQuery, pageToken, order, maxResults);
+  if (!result) return emptyResult();
+  if (cacheAvailable) {
+    try {
       await SongCache.findOneAndUpdate(
         { cacheKey },
         {
@@ -123,18 +120,23 @@ export async function getYouTubeSongs(searchQuery, pageToken = '', order = 'rele
           order,
           maxResults,
           songs: result.items,
+          shortsFiltered: true,
           nextPageToken: result.nextPageToken,
           prevPageToken: result.prevPageToken,
           cachedAt: new Date(),
         },
         { upsert: true, returnDocument: 'after' }
       );
-    }
-
-    return result;
-  } catch (dbError) {
-    // If MongoDB is unavailable, fall back to direct YouTube API call
-    console.error('[Cache Error] MongoDB unavailable, falling back to YouTube:', dbError.message);
-    return fetchFromYouTube(searchQuery, pageToken, order, maxResults);
+    } catch { console.error('YouTube cache write unavailable; returning fetched songs.'); }
   }
+  return result;
+}
+
+export function getYouTubeSongs(searchQuery, pageToken = '', order = 'relevance', maxResults = 5) {
+  const cacheKey = buildCacheKey(searchQuery, order, maxResults, pageToken);
+  if (inFlight.has(cacheKey)) return inFlight.get(cacheKey);
+  const request = loadSongs(cacheKey, searchQuery, pageToken, order, maxResults)
+    .finally(() => inFlight.delete(cacheKey));
+  inFlight.set(cacheKey, request);
+  return request;
 }

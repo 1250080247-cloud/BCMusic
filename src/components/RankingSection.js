@@ -1,6 +1,7 @@
 "use client";
 
 import MotionList from '@/components/MotionList';
+import MusicRowSkeleton from '@/components/MusicRowSkeleton';
 
 import { decodeSongTitle } from '@/lib/song-title';
 
@@ -9,7 +10,7 @@ import Image from 'next/image';
 import { formatViewCount, getDictionary } from '@/lib/i18n';
 import { useMusicStore, useSettingsStore } from '@/lib/store';
 
-export default function RankingSection({ songs, genreKey }) {
+export default function RankingSection({ songs, genreKey, isLoading = false }) {
   const { startPlayback, setViewingSong } = useMusicStore();
   const language = useSettingsStore((state) => state.language);
   const t = getDictionary(language);
@@ -26,7 +27,7 @@ export default function RankingSection({ songs, genreKey }) {
   };
 
   return (
-    <section data-motion-section className="mx-auto mb-8 px-4 sm:px-8" style={{ maxWidth: '80rem' }}>
+    <section data-motion-section aria-busy={isLoading} className="mx-auto mb-8 px-4 sm:px-8" style={{ maxWidth: '80rem' }}>
       <div className="mb-5 flex items-center gap-3">
         <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-amber-500/15 text-amber-400">
           <Crown size={20} />
@@ -37,7 +38,8 @@ export default function RankingSection({ songs, genreKey }) {
         </div>
       </div>
 
-      {songs.length === 0 && <p className="surface-card rounded-3xl p-8 muted-text text-sm">{t.home.noSongsDescription}</p>}
+      {isLoading && <><p className="sr-only" role="status">{language === 'vi' ? 'Đang tải nhạc…' : 'Loading music…'}</p><MusicRowSkeleton count={6} /></>}
+      {!isLoading && songs.length === 0 && <p className="surface-card rounded-3xl p-8 muted-text text-sm">{t.home.noSongsDescription}</p>}
       <MotionList animationKey={songs.map((item) => item.id).join('|')} className="scrollbar-hide flex gap-4 overflow-x-auto pb-2" style={{ cursor: 'grab' }}>
         {songs.map((song, index) => (
           <article

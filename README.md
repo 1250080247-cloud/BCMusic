@@ -65,6 +65,8 @@ Tìm kiếm và gợi ý không còn giới hạn `videoDuration=medium`: giữ 
 
 Trên trang chủ, cả Top Thịnh Hành, Xem nhiều nhất và Mới nhất đều lấy theo thể loại đang chọn. Top dùng tìm kiếm nổi bật theo thể loại, Xem nhiều nhất sắp xếp theo lượt xem, Mới nhất theo ngày đăng; đây không phải bảng xếp hạng thịnh hành chính thức của YouTube. Nhãn thể loại hiện trên cả ba phần. TikTok Remix dùng truy vấn `tiktok remix`, không ghép thêm `ncs`.
 
+Khi đổi thể loại, phần đầu trang và khung tải hiện trước; ba danh sách được gửi xuống độc lập khi có kết quả. Cache YouTube lưu thời lượng và trạng thái đã lọc Shorts, không gọi lại YouTube trên mỗi lần đọc cache còn hạn. Cache cũ được kiểm tra một lần khi đọc và bổ sung metadata, giữ mốc hết hạn cũ. Kết quả rỗng hợp lệ cũng được cache, còn lỗi dịch vụ không được lưu như kết quả rỗng. Các yêu cầu trùng nhau dùng chung một lượt tải trong cùng tiến trình; việc này không phải khóa giữa các instance Vercel. Chi tiết đo tốc độ: `docs/category-performance.md`.
+
 ## Quyền truy cập và dữ liệu
 
 - API hồ sơ và yêu thích bắt buộc đăng nhập. Chủ sở hữu lấy từ session server; `userId` do client gửi không được dùng để cấp quyền.
@@ -74,7 +76,7 @@ Trên trang chủ, cả Top Thịnh Hành, Xem nhiều nhất và Mới nhất �
 
 ## Thay đổi schema tương thích dữ liệu cũ
 
-`Favorite` thêm `sourceUrl`; `History` thêm `embedUrl` và `sourceUrl`. Các trường đều tùy chọn; giữ nguyên collection, ID và index hiện có. Không cần migration ghi hàng loạt để chạy phiên bản này.
+`Favorite` thêm `sourceUrl`; `History` thêm `embedUrl` và `sourceUrl`. Cache YouTube thêm `songs.durationSeconds` và `shortsFiltered`. Các trường đều tương thích với bản ghi cũ; giữ nguyên collection, ID và index hiện có. Không cần migration ghi hàng loạt để chạy phiên bản này.
 
 Bản ghi SoundCloud cũ thiếu URL phát được bổ sung khi đọc từ thư viện cùng chủ sở hữu. Nếu không tìm thấy metadata, ID track dạng `sc_<số>` được dùng để dựng URL phát. ID playlist cũ không có metadata và không còn trong thư viện gốc cần import lại URL SoundCloud vì ID cũ không phân biệt track/playlist.
 

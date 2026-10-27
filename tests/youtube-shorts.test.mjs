@@ -61,7 +61,7 @@ test('YouTube search removes the medium-duration restriction and keeps regular s
   assert.equal(fixture.requests.some(({ url }) => url.pathname === `/shorts/${longId}`), false, 'a 45-minute video cannot be a Short');
 });
 
-test('cached rows are also filtered without editing cached records and use the new unrestricted-search cache namespace', async () => {
+test('legacy cached rows are filtered without mutating the read object and use the unrestricted-search cache namespace', async () => {
   const cached = { cachedAt: new Date(), songs: [normalId, shortId, unknownId].map(id => ({ id, title: `Song ${id}` })), nextPageToken: 'cached-next', prevPageToken: 'cached-prev' };
   const before = JSON.stringify(cached);
   const fixture = await youtubeFixture({ cached });
@@ -70,7 +70,10 @@ test('cached rows are also filtered without editing cached records and use the n
   assert.equal(result.nextPageToken, 'cached-next');
   assert.equal(result.prevPageToken, 'cached-prev');
   assert.equal(JSON.stringify(cached), before);
-  assert.equal(fixture.writes.length, 0);
+  assert.equal(fixture.writes.length, 1);
+  assert.deepEqual(Array.from(fixture.writes[0][1].$set.songs, song => song.id), [normalId, unknownId]);
+  assert.equal(fixture.writes[0][1].$set.shortsFiltered, true);
+  assert.equal('cachedAt' in fixture.writes[0][1].$set, false);
   assert.equal(fixture.requests.some(({ url }) => url.hostname === 'www.googleapis.com'), false);
   const fresh = await youtubeFixture();
   await fresh.getYouTubeSongs('music');
