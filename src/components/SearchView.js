@@ -1,6 +1,8 @@
 "use client";
 
 import MotionList from '@/components/MotionList';
+import SearchSuggestionList from '@/components/SearchSuggestionList';
+import useSearchSuggestions from '@/components/useSearchSuggestions';
 
 import { useEffect, useState, useRef, Suspense } from 'react';
 import { Search, X, Trash2, ArrowLeft, ArrowRight, Loader2, History } from 'lucide-react';
@@ -37,6 +39,8 @@ function SearchContent() {
   const prevPageToken = currentResponse?.prevPageToken || null;
   const loading = Boolean(activeSearch && !currentResponse);
   const inputRef = useRef(null);
+  const suggestions = useSearchSuggestions({ query, history: searchHistory, language, onSelect: handleRecentClick });
+  const suggestionListId = 'music-search-suggestions';
 
   useEffect(() => {
     if (!activeSearch) return;
@@ -64,6 +68,7 @@ function SearchContent() {
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    suggestions.close();
     const trimmed = query.trim();
     if (!trimmed) {
       router.push('/search');
@@ -72,12 +77,13 @@ function SearchContent() {
     router.push(`/search?q=${encodeURIComponent(trimmed)}`);
   };
 
-  const handleRecentClick = (term) => {
+  function handleRecentClick(term) {
     setQuery(term);
     router.push(`/search?q=${encodeURIComponent(term)}`);
-  };
+  }
 
   const handleClearInput = () => {
+    suggestions.close();
     setQuery('');
     router.push('/search');
     inputRef.current?.focus();
@@ -95,25 +101,37 @@ function SearchContent() {
 
       {/* Input bar */}
       <form onSubmit={handleSubmit} className="relative flex items-center gap-3 w-full">
-        <div className="relative flex-1">
+        <div className="relative min-w-0 flex-1" onFocus={suggestions.open} onBlur={suggestions.onBlur}>
           <Search size={20} className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--muted-text)]" />
           <input
             ref={inputRef}
             type="text"
+            role="combobox"
+            autoComplete="off"
+            aria-label={t.searchPage.placeholder}
+            aria-autocomplete="list"
+            aria-expanded={Boolean(suggestions.show)}
+            aria-controls={suggestions.show ? suggestionListId : undefined}
+            aria-activedescendant={suggestions.show && suggestions.activeIndex >= 0 ? `${suggestionListId}-${suggestions.activeIndex}` : undefined}
+            aria-describedby={`${suggestionListId}-hint`}
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => { setQuery(e.target.value); suggestions.open(); }}
+            onKeyDown={suggestions.onKeyDown}
             placeholder={t.searchPage.placeholder}
             className="w-full bg-[var(--surface)] hover:bg-[var(--surface-hover)] focus:bg-[var(--surface-strong)] text-[var(--app-text)] pl-12 pr-10 py-3 rounded-full border border-[var(--border)] focus:border-pink-500/50 outline-none transition-all text-sm font-medium shadow-inner sm:text-base sm:py-3.5"
           />
           {query && (
             <button
               type="button"
+              aria-label={t.home.clearSearch}
               onClick={handleClearInput}
               className="absolute right-4 top-1/2 -translate-y-1/2 text-[var(--muted-text)] hover:text-[var(--app-text)] p-0.5 rounded-full hover:bg-white/10 transition-all"
             >
               <X size={18} />
             </button>
           )}
+          <span id={`${suggestionListId}-hint`} className="sr-only">{t.searchPage.suggestionsHint}</span>
+          <SearchSuggestionList menu={suggestions} listId={suggestionListId} copy={t.searchPage} />
         </div>
         <button
           type="submit"

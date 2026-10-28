@@ -6,6 +6,7 @@ import { Clock, Settings } from 'lucide-react';
 import CategoryScroller from '@/components/CategoryScroller';
 import SettingsPanel from '@/components/SettingsPanel';
 import AuthModal from '@/components/AuthModal';
+import MusicScene from '@/components/MusicScene';
 import { getDictionary } from '@/lib/i18n';
 import { useSettingsStore } from '@/lib/store';
 
@@ -63,9 +64,11 @@ export default function HomeHeader({ categories, currentQuery, currentSearch }) 
         </div>
       </div>
 
+      {!currentSearch && <MusicScene />}
+
       {/* Category Pills */}
       {!currentSearch && (
-        <div data-motion-intro className="home-header-categories">
+        <div id="music-discovery" data-motion-intro className="home-header-categories">
           <CategoryScroller categories={categories} currentQuery={currentQuery} />
         </div>
       )}

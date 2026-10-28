@@ -101,6 +101,11 @@ export const dictionaries = {
       noResults: 'Không tìm thấy kết quả nào',
       noResultsHint: 'Hãy thử với từ khoá khác.',
       searching: 'Đang tìm kiếm...',
+      suggestions: 'Gợi ý tìm kiếm',
+      suggestionsLoading: 'Đang tải gợi ý…',
+      suggestionsUnavailable: 'Chưa tải được gợi ý trực tuyến. Nhấn Enter để tìm.',
+      suggestionsEmpty: 'Nhấn Enter để tìm với từ khóa này.',
+      suggestionsHint: 'Dùng phím lên xuống để chọn gợi ý, Enter để tìm, Escape để đóng.',
     },
     lyrics: {
       title: 'Lời bài hát',
@@ -273,6 +278,11 @@ export const dictionaries = {
       noResults: 'No results found',
       noResultsHint: 'Try a different keyword.',
       searching: 'Searching...',
+      suggestions: 'Search suggestions',
+      suggestionsLoading: 'Loading suggestions…',
+      suggestionsUnavailable: 'Online suggestions are unavailable. Press Enter to search.',
+      suggestionsEmpty: 'Press Enter to search for this term.',
+      suggestionsHint: 'Use the arrow keys to select a suggestion, Enter to search and Escape to close.',
     },
     lyrics: {
       title: 'Lyrics',

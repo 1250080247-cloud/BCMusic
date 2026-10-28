@@ -11,10 +11,10 @@ const mainCsp = 'default-src https:; report-uri https://csp.withgoogle.com/csp/y
 const shortPage = () => new Response(null, { headers: { 'content-type': 'text/html; charset=utf-8', 'content-length': '0', 'content-security-policy': mainCsp } });
 const regularPage = id => new Response(null, { status: 303, headers: { location: `https://www.youtube.com/watch?v=${id}` } });
 
-async function youtubeFixture({ ids = [normalId, shortId, longId, unknownId], cached = null, probe, globals = {} } = {}) {
+async function youtubeFixture({ ids = [normalId, shortId, longId, unknownId], cached = null, probe, globals = {}, durationOverrides = {} } = {}) {
   const requests = [];
   const writes = [];
-  const durations = { [normalId]: 'PT2M', [shortId]: 'PT20S', [longId]: 'PT45M', [unknownId]: 'PT2M45S' };
+  const durations = { [normalId]: 'PT2M', [shortId]: 'PT20S', [longId]: 'PT45M', [unknownId]: 'PT2M45S', ...durationOverrides };
   const { getYouTubeSongs } = await loadModule('src/lib/youtube.js', {
     '@/lib/mongodb': { default: async () => {} },
     '@/models/SongCache': { default: {
@@ -59,6 +59,15 @@ test('YouTube search removes the medium-duration restriction and keeps regular s
   assert.equal(result.nextPageToken, 'next-real-token');
   assert.equal(result.prevPageToken, 'previous-real-token');
   assert.equal(fixture.requests.some(({ url }) => url.pathname === `/shorts/${longId}`), false, 'a 45-minute video cannot be a Short');
+});
+
+test('regular videos have no minimum or maximum duration, including one second and more than a day', async () => {
+  const fixture = await youtubeFixture({ ids: [normalId, longId], durationOverrides: { [normalId]: 'PT1S', [longId]: 'P1DT2H' } });
+  const result = await fixture.getYouTubeSongs('music');
+  assert.deepEqual(Array.from(result.items, song => song.id), [normalId, longId]);
+  assert.deepEqual(Array.from(result.items, song => song.durationSeconds), [1, 93600]);
+  const query = fixture.requests.find(({ url }) => url.pathname.endsWith('/search')).url.searchParams;
+  assert.equal(query.has('videoDuration'), false);
 });
 
 test('legacy cached rows are filtered without mutating the read object and use the unrestricted-search cache namespace', async () => {

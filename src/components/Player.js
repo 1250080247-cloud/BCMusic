@@ -104,9 +104,12 @@ export default function Player() {
 
   // Broadcast play-state to NowPlayingPanel
   useEffect(() => {
-    window.dispatchEvent(
+    const broadcast = () => window.dispatchEvent(
       new CustomEvent('bcmusic:playstate', { detail: { songId: currentSong?.id, isPlaying } })
     );
+    broadcast();
+    window.addEventListener('bcmusic:requestplaystate', broadcast);
+    return () => window.removeEventListener('bcmusic:requestplaystate', broadcast);
   }, [isPlaying, currentSong?.id]);
 
   // Broadcast time updates to NowPlayingPanel

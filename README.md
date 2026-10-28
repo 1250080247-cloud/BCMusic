@@ -69,6 +69,12 @@ Trên trang chủ, cả Top Thịnh Hành, Xem nhiều nhất và Mới nhất �
 
 Khi đổi thể loại, phần đầu trang và khung tải hiện trước; ba danh sách được gửi xuống độc lập khi có kết quả. Cache YouTube lưu thời lượng và trạng thái đã lọc Shorts, không gọi lại YouTube trên mỗi lần đọc cache còn hạn. Cache cũ được kiểm tra một lần khi đọc và bổ sung metadata, giữ mốc hết hạn cũ. Kết quả rỗng hợp lệ cũng được cache, còn lỗi dịch vụ không được lưu như kết quả rỗng. Các yêu cầu trùng nhau dùng chung một lượt tải trong cùng tiến trình; việc này không phải khóa giữa các instance Vercel. Chi tiết đo tốc độ: `docs/category-performance.md`.
 
+## Gợi ý tìm kiếm
+
+Ô tìm kiếm có danh sách gợi ý ngay phía dưới: ưu tiên lịch sử khớp trên trình duyệt, sau đó gợi ý theo tìm kiếm YouTube. Hỗ trợ từ khóa tiếng Việt có/không dấu, phím lên/xuống, Enter, Escape và chọn bằng chuột. Khi nguồn gợi ý lỗi, lịch sử vẫn dùng được và người nghe vẫn có thể nhấn Enter để tìm bình thường.
+
+Gợi ý trực tuyến bắt đầu sau khi ngừng gõ 300ms và nhập ít nhất hai ký tự; không gọi YouTube Data API cho mỗi ký tự. Chọn gợi ý chỉ gửi từ khóa vào luồng tìm kiếm YouTube hiện có, không phát đoạn nghe thử. Lịch sử tìm kiếm không được gửi lên nguồn gợi ý hoặc MongoDB. Thời lượng bài thường không có giới hạn tối thiểu/tối đa; bộ lọc Shorts được giữ theo yêu cầu. Hợp đồng, nguồn và bằng chứng kiểm tra: `docs/search-suggestions.md`.
+
 ## Quyền truy cập và dữ liệu
 
 - API hồ sơ và yêu thích bắt buộc đăng nhập. Chủ sở hữu lấy từ session server; `userId` do client gửi không được dùng để cấp quyền.

@@ -110,6 +110,23 @@ async function playerFixture(source = 'youtube', repeatMode = 'off') {
   return { tree, calls, harness, yt: find(tree, node => node.type === YouTube), events, browser, hooks, state, render };
 }
 
+test('persistent player answers playback-state requests and removes its listener on unmount', async () => {
+  const { browser, harness, yt, render } = await playerFixture();
+  const snapshots = [];
+  browser.addEventListener('bcmusic:playstate', event => snapshots.push(event.detail));
+  browser.dispatchEvent(new Event('bcmusic:requestplaystate'));
+  assert.equal(snapshots.at(-1).songId, 'A1');
+  assert.equal(snapshots.at(-1).isPlaying, true);
+  yt.props.onStateChange({ data: 2 });
+  render();
+  browser.dispatchEvent(new Event('bcmusic:requestplaystate'));
+  assert.equal(snapshots.at(-1).isPlaying, false);
+  const count = snapshots.length;
+  harness.unmount();
+  browser.dispatchEvent(new Event('bcmusic:requestplaystate'));
+  assert.equal(snapshots.length, count);
+});
+
 for (const source of ['youtube', 'soundcloud']) {
   test(`Next on the last ${source} track pauses the underlying media`, async () => {
     const { tree, calls, harness } = await playerFixture(source);
