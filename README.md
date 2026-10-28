@@ -59,7 +59,9 @@ GSAP Core, React `useGSAP` và ScrollTrigger điều khiển hiệu ứng xuất
 
 Bấm ảnh bìa hoặc nút lời ở thanh phát để mở player toàn màn hình. Player dùng ảnh bìa làm nền, giữ các điều khiển YouTube/SoundCloud hiện có và có tab lời, hàng đợi, thông tin. Escape thu gọn giao diện và tiếp tục phát nhạc.
 
-Lời được tra qua LRCLIB miễn phí, không cần API key và không ghi vào MongoDB. Bản có timestamp LRC sẽ chạy theo từng dòng nếu thời lượng khớp bản ghi; bấm câu để tua. Nguồn chỉ có văn bản sẽ hiện lời tĩnh. Không giả lập thời gian từng chữ. Chi tiết hợp đồng và trạng thái lỗi: `docs/player-lyrics.md`.
+Lời được tra qua LRCLIB miễn phí, với lyrics.ovh làm nguồn dự phòng khi LRCLIB không có lời dùng được hoặc gặp lỗi. Hai nguồn không cần API key và không ghi lời vào MongoDB. Bản LRCLIB có timestamp LRC sẽ chạy theo từng dòng nếu thời lượng khớp bản ghi; bấm câu để tua. lyrics.ovh chỉ cung cấp lời văn bản, hiển thị tĩnh và có ghi nguồn; không tạo timestamp giả. Chi tiết hợp đồng và trạng thái lỗi: `docs/player-lyrics.md`.
+
+Trang playlist dùng khung rộng hơn và ảnh ghép từ bốn bài được thêm gần nhất vào từng playlist. Playlist một bài dùng một ảnh; nếu thiếu bài hoặc ảnh lỗi, ô tương ứng dùng biểu tượng nhạc. Ảnh ghép chỉ được tính khi hiển thị, không sửa thứ tự phát hay bản ghi MongoDB.
 
 Tìm kiếm và gợi ý không còn giới hạn `videoDuration=medium`: giữ cả bài thường ngắn hơn 2:30 và bài dài. Ứng dụng kiểm tra routing của URL Shorts công khai để loại bản xác định là Shorts, có timeout và cache giới hạn. YouTube Data API không cung cấp cờ `isShort`; khi không xác minh được, ứng dụng giữ video để tránh loại nhầm bài nhạc. Cache MongoDB cũ được giữ nguyên, không xóa hàng loạt.
 

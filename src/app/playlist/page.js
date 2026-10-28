@@ -1,10 +1,11 @@
 "use client";
 
 import MotionList from '@/components/MotionList';
+import PlaylistArtwork from '@/components/PlaylistArtwork';
 
 import { decodeSongTitle } from '@/lib/song-title';
 
-import { ChevronDown, ChevronUp, ListMusic, Music, Play, Plus, Trash2, X } from 'lucide-react';
+import { ChevronDown, ChevronUp, ListMusic, Play, Plus, Trash2, X } from 'lucide-react';
 import Image from 'next/image';
 import { useEffect, useState } from 'react';
 import { useSession } from 'next-auth/react';
@@ -137,7 +138,7 @@ export default function PlaylistPage() {
         </div>
       </header>
 
-      <section className="mx-auto mt-8 max-w-3xl px-4 sm:px-8">
+      <section className="mx-auto mt-8 max-w-6xl px-4 sm:px-8">
         {/* Create Playlist Form */}
         <form onSubmit={handleCreate} className="mb-8 flex gap-3">
           <input
@@ -145,7 +146,7 @@ export default function PlaylistPage() {
             value={newName}
             onChange={(event) => setNewName(event.target.value)}
             placeholder={t.playlist.namePlaceholder}
-            className="search-input flex-1 rounded-2xl px-5 py-3 text-sm font-medium"
+            className="search-input min-w-0 flex-1 rounded-2xl px-5 py-3 text-sm font-medium"
           />
           <button
             type="submit"
@@ -175,41 +176,41 @@ export default function PlaylistPage() {
               return (
                 <div key={pl.id} className="surface-card overflow-hidden rounded-3xl">
                   {/* Playlist Header */}
-                  <div className="flex items-center gap-4 p-5">
-                    <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-purple-500/20 to-pink-500/20 text-purple-400">
-                      <Music size={22} />
-                    </div>
+                  <div className="grid grid-cols-[80px_minmax(0,1fr)] items-center gap-x-4 gap-y-3 p-4 sm:flex sm:gap-6 sm:p-6">
+                    <div className="row-span-2 sm:row-span-1"><PlaylistArtwork songs={pl.songs} /></div>
                     <div className="min-w-0 flex-1">
-                      <h3 className="text-lg font-bold">{pl.name}</h3>
-                      <p className="muted-text text-sm">
+                      <h2 className="break-words text-xl font-bold sm:text-2xl">{pl.name}</h2>
+                      <p className="muted-text mt-1 text-xs leading-5 sm:text-sm">
                         {pl.songs.length} {t.playlist.songCount}
                         {pl.createdAt && ` · ${t.playlist.createdAt} ${formatDateTime(pl.createdAt, language)}`}
                       </p>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="col-start-2 flex items-center gap-1 sm:gap-2">
                       {pl.songs.length > 0 && (
                         <button
                           type="button"
                           onClick={() => handlePlayAll(pl)}
-                          className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-r from-purple-500 to-pink-600 text-white transition hover:scale-105"
+                          className="flex h-11 w-11 items-center justify-center rounded-full bg-gradient-to-r from-purple-500 to-pink-600 text-white transition hover:scale-105"
                           aria-label={t.playlist.playAll}
                           title={t.playlist.playAll}
                         >
-                          <Play fill="white" size={16} />
+                          <Play fill="white" size={18} />
                         </button>
                       )}
                       <button
                         type="button"
                         onClick={() => setExpandedId(isExpanded ? null : pl.id)}
-                        className="flex h-9 w-9 items-center justify-center rounded-full text-[var(--muted-text)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--app-text)]"
+                        className="flex h-11 w-11 items-center justify-center rounded-full text-[var(--muted-text)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--app-text)]"
                         aria-label={isExpanded ? 'Collapse' : 'Expand'}
+                        aria-expanded={isExpanded}
+                        aria-controls={`playlist-songs-${pl.id}`}
                       >
                         {isExpanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
                       </button>
                       <button
                         type="button"
                         onClick={() => handleDelete(pl.id)}
-                        className="flex h-9 w-9 items-center justify-center rounded-full text-[var(--muted-text)] transition hover:bg-red-500/15 hover:text-red-400"
+                        className="flex h-11 w-11 items-center justify-center rounded-full text-[var(--muted-text)] transition hover:bg-red-500/15 hover:text-red-400"
                         aria-label={t.playlist.deletePlaylist}
                         title={t.playlist.deletePlaylist}
                       >
@@ -220,7 +221,7 @@ export default function PlaylistPage() {
 
                   {/* Songs List (expanded) */}
                   {isExpanded && (
-                    <div className="border-t border-[var(--border)] px-5 pb-5 pt-4">
+                    <div id={`playlist-songs-${pl.id}`} className="border-t border-[var(--border)] px-4 pb-5 pt-4 sm:px-6">
                       {pl.songs.length === 0 ? (
                         <p className="muted-text py-4 text-center text-sm">{t.playlist.emptyDescription}</p>
                       ) : (

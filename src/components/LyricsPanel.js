@@ -8,6 +8,7 @@ const messages = {
   vi: { title: 'Lời bài hát', loading: 'Đang tìm lời bài hát…', unavailable: 'Chưa tìm thấy lời phù hợp', hint: 'Lời sẽ xuất hiện ở đây khi có bản khớp với bài đang phát.', error: 'Chưa kết nối được nguồn lời', retry: 'Thử lại', instrumental: 'Thả mình vào giai điệu.', instrumentalHint: 'Bản nhạc này không có lời.', synced: 'Đồng bộ theo dòng', plain: 'Lời chưa có thời gian đồng bộ', follow: 'Theo dõi lời', interlude: 'Nhạc dạo', seek: 'Phát từ câu này' },
   en: { title: 'Lyrics', loading: 'Finding the lyrics…', unavailable: 'No matching lyrics yet', hint: 'Lyrics will appear here when a matching recording is available.', error: 'Lyrics are temporarily unavailable', retry: 'Try again', instrumental: 'Just you and the music.', instrumentalHint: 'This recording is instrumental.', synced: 'Line-synced lyrics', plain: 'Lyrics without timing', follow: 'Follow lyrics', interlude: 'Instrumental', seek: 'Play from this line' },
 };
+const providerLinks = new Map([['LRCLIB', 'https://lrclib.net'], ['lyrics.ovh', 'https://lyrics.ovh']]);
 
 export default function LyricsPanel({ song, duration, currentTime, language }) {
   const copy = messages[language] || messages.en;
@@ -27,6 +28,7 @@ export default function LyricsPanel({ song, duration, currentTime, language }) {
   const lines = data?.status === 'synced' ? data.lines : [];
   const activeIndex = activeLineAt(lines, currentTime);
   const loading = canLookup && !result;
+  const sourceUrl = providerLinks.get(data?.source);
 
   useEffect(() => {
     if (!canLookup) return;
@@ -59,7 +61,7 @@ export default function LyricsPanel({ song, duration, currentTime, language }) {
       <header className="focus-lyrics-heading">
         <div>
           <h2>{copy.title}</h2>
-          {data?.source === 'LRCLIB' && <a href="https://lrclib.net" target="_blank" rel="noopener noreferrer">LRCLIB</a>}
+          {sourceUrl && <a href={sourceUrl} target="_blank" rel="noopener noreferrer">{data.source}</a>}
         </div>
         {lines.length > 0 && <button type="button" className="focus-pill" aria-pressed={follow} onClick={() => setFollow(value => !value)}>{copy.follow}</button>}
       </header>

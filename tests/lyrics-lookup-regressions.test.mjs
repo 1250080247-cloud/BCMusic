@@ -74,9 +74,9 @@ test('a direct lookup timeout leaves a separate bounded search attempt available
   assert.notEqual(signals[0], signals[1]);
 });
 
-test('rate limiting stops lookup without fanning out and a good result survives search failure', async () => {
+test('rate limiting stops LRCLIB fan-out and a good result survives search failure', async () => {
   let calls = 0;
-  const limited = await loadModule('src/lib/lyrics-provider.js', {}, { fetch: async () => { calls++; return new Response(null, { status: 429 }); } });
+  const limited = await loadModule('src/lib/lyrics-provider.js', {}, { fetch: async url => { if (new URL(url).hostname === 'lrclib.net') calls++; return new Response(null, { status: 429 }); } });
   await assert.rejects(limited.lookupLyrics({ title: 'Song', artist: 'Artist', duration: 180 }));
   assert.equal(calls, 1);
   const fallback = await loadModule('src/lib/lyrics-provider.js', {}, {

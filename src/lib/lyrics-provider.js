@@ -1,21 +1,17 @@
 import { lyricsSearchParameters, selectLyrics } from './lyrics';
+import { requestLyricsJson } from './lyrics-request';
+import { lookupOvhLyrics } from './lyrics-ovh';
 
 async function requestLyrics(path, parameters, signal) {
   const url = new URL(path, 'https://lrclib.net');
   url.search = new URLSearchParams(parameters).toString();
-  const response = await fetch(url, {
+  return requestLyricsJson(url, {
     headers: { 'Lrclib-Client': 'BCMusic/0.1.0' },
-    signal, redirect: 'error', next: { revalidate: 3600 },
+    signal,
   });
-  if (response.status === 404) return null;
-  if (!response.ok) throw Object.assign(new Error('lyrics_provider_unavailable'), { status: response.status });
-  if (Number(response.headers.get('content-length')) > 512000) throw new Error('lyrics_response_too_large');
-  const body = await response.text();
-  if (body.length > 512000) throw new Error('lyrics_response_too_large');
-  return JSON.parse(body);
 }
 
-export async function lookupLyrics(metadata) {
+async function lookupLrclib(metadata) {
   const parameters = { track_name: metadata.title, artist_name: metadata.artist };
   let exact = null;
   try {
@@ -36,4 +32,16 @@ export async function lookupLyrics(metadata) {
     if (result.status !== 'unavailable') return result;
     throw error;
   }
+}
+
+export async function lookupLyrics(metadata) {
+  let primary;
+  let primaryError;
+  try { primary = await lookupLrclib(metadata); }
+  catch (error) { primaryError = error; }
+  if (primary && primary.status !== 'unavailable') return primary;
+  const backup = await lookupOvhLyrics(metadata);
+  if (backup) return backup;
+  if (primaryError) throw primaryError;
+  return primary;
 }
