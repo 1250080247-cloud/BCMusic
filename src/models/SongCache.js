@@ -40,6 +40,7 @@ const SongCacheSchema = new mongoose.Schema({
   },
   // Only derived YouTube cache data; old entries are verified on their next read.
   shortsFiltered: { type: Boolean, default: false },
+  shortsFilterVersion: { type: Number, default: 0 },
   nextPageToken: {
     type: String,
     default: null,

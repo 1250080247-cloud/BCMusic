@@ -1,17 +1,20 @@
 import dbConnect from '@/lib/mongodb';
 import SongCache from '@/models/SongCache';
-import { parseYouTubeDuration, removeYouTubeShorts } from '@/lib/youtube-shorts';
+import { parseYouTubeDuration, filterYouTubeShorts, SHORTS_FILTER_VERSION } from '@/lib/youtube-shorts';
 
 const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour in milliseconds
 const inFlight = new Map();
 const emptyResult = () => ({ items: [], nextPageToken: null, prevPageToken: null });
+const MIN_DURATION_SECONDS = 30;
+const aboveMinimumDuration = song => Number.isFinite(song.durationSeconds) && song.durationSeconds > MIN_DURATION_SECONDS;
 
 /**
  * Build a unique cache key from query parameters.
  */
 function buildCacheKey(query, order, maxResults, pageToken) {
   // The old namespace contained only 4–20 minute results (videoDuration=medium).
-  // Keep those documents intact while fetching unrestricted results separately.
+  // Keep those documents intact. Apply the current minimum on every cache read,
+  // including entries previously verified only for Shorts.
   return `youtube-no-shorts-v2:${query}__${order}__${maxResults}__${pageToken || 'first'}`;
 }
 
@@ -46,14 +49,16 @@ async function fetchFromYouTube(searchQuery, pageToken = '', order = 'relevance'
         const statsUrl = `https://www.googleapis.com/youtube/v3/videos?part=statistics,contentDetails&id=${videoIds}&key=${API_KEY}`;
         const statsRes = await fetch(statsUrl, { cache: 'no-store', signal: AbortSignal.timeout(2500) });
         const statsData = await statsRes.json();
-        if (statsRes.ok && statsData.items) {
-          for (const v of statsData.items) {
-            viewCounts[v.id] = v.statistics?.viewCount || null;
-            durations[v.id] = parseYouTubeDuration(v.contentDetails?.duration);
-          }
+        // Duration is required to enforce the cutoff. Do not cache a provider
+        // outage as a successful empty search page.
+        if (!statsRes.ok || !Array.isArray(statsData.items)) return null;
+        for (const v of statsData.items) {
+          viewCounts[v.id] = v.statistics?.viewCount || null;
+          durations[v.id] = parseYouTubeDuration(v.contentDetails?.duration);
         }
       } catch (statsError) {
         console.error('YouTube statistics unavailable:', statsError.name);
+        return null;
       }
     }
 
@@ -68,8 +73,10 @@ async function fetchFromYouTube(searchQuery, pageToken = '', order = 'relevance'
       source: 'youtube',
     }));
 
+    const filtered = await filterYouTubeShorts(formattedItems.filter(aboveMinimumDuration));
     return {
-      items: await removeYouTubeShorts(formattedItems),
+      items: filtered.items,
+      shortsFilterComplete: filtered.complete,
       nextPageToken: data.nextPageToken || null,
       prevPageToken: data.prevPageToken || null,
     };
@@ -96,21 +103,24 @@ async function loadSongs(cacheKey, searchQuery, pageToken, order, maxResults) {
   }
 
   if (cached && Date.now() - new Date(cached.cachedAt).getTime() < CACHE_TTL_MS) {
-    const items = cached.shortsFiltered ? cached.songs || [] : await removeYouTubeShorts(cached.songs || []);
-    if (!cached.shortsFiltered) {
+    const verified = cached.shortsFiltered && cached.shortsFilterVersion === SHORTS_FILTER_VERSION;
+    const filtered = verified ? { items: cached.songs || [], complete: true } : await filterYouTubeShorts(cached.songs || []);
+    const items = filtered.items;
+    if (!verified && filtered.complete) {
       try {
         // Keep the original expiry and avoid overwriting a concurrent refresh.
         await SongCache.findOneAndUpdate({ cacheKey, cachedAt: cached.cachedAt }, {
-          $set: { songs: items, shortsFiltered: true },
+          $set: { songs: items, shortsFiltered: true, shortsFilterVersion: SHORTS_FILTER_VERSION },
         });
       } catch { console.error('YouTube cache metadata update unavailable.'); }
     }
-    return { items, nextPageToken: cached.nextPageToken, prevPageToken: cached.prevPageToken };
+    return { items: items.filter(aboveMinimumDuration), nextPageToken: cached.nextPageToken, prevPageToken: cached.prevPageToken };
   }
 
   const result = await fetchFromYouTube(searchQuery, pageToken, order, maxResults);
   if (!result) return emptyResult();
-  if (cacheAvailable) {
+  const { shortsFilterComplete, ...page } = result;
+  if (cacheAvailable && shortsFilterComplete) {
     try {
       await SongCache.findOneAndUpdate(
         { cacheKey },
@@ -121,6 +131,7 @@ async function loadSongs(cacheKey, searchQuery, pageToken, order, maxResults) {
           maxResults,
           songs: result.items,
           shortsFiltered: true,
+          shortsFilterVersion: SHORTS_FILTER_VERSION,
           nextPageToken: result.nextPageToken,
           prevPageToken: result.prevPageToken,
           cachedAt: new Date(),
@@ -129,7 +140,7 @@ async function loadSongs(cacheKey, searchQuery, pageToken, order, maxResults) {
       );
     } catch { console.error('YouTube cache write unavailable; returning fetched songs.'); }
   }
-  return result;
+  return page;
 }
 
 export function getYouTubeSongs(searchQuery, pageToken = '', order = 'relevance', maxResults = 5) {

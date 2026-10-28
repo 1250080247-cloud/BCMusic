@@ -79,7 +79,7 @@ export default function CategoryScroller({ categories, currentQuery }) {
   }, []);
 
   return (
-    <div className="category-scroller-wrapper relative w-full max-w-4xl">
+    <div className="category-scroller-wrapper relative w-full min-w-0">
       {canScrollLeft && (
         <>
           <div className="category-scroller-fade-left" />
@@ -97,8 +97,7 @@ export default function CategoryScroller({ categories, currentQuery }) {
       <nav
         ref={scrollRef}
         onMouseDown={handleMouseDown}
-        className="scrollbar-hide flex w-full gap-3 overflow-x-auto pb-4"
-        style={{ cursor: 'grab' }}
+        className="category-scroller-nav scrollbar-hide flex w-full gap-3 overflow-x-auto pb-4"
       >
         {categories.map((category) => {
           const isActive = currentQuery === category.query;
@@ -107,6 +106,8 @@ export default function CategoryScroller({ categories, currentQuery }) {
             <Link
               key={category.key}
               href={`/?genre=${encodeURIComponent(category.query)}`}
+              className="shrink-0"
+              aria-current={isActive ? 'page' : undefined}
               onClick={(event) => {
                 if (hasMoved.current) event.preventDefault();
               }}

@@ -63,7 +63,7 @@ Lời được tra qua LRCLIB miễn phí, với lyrics.ovh làm nguồn dự ph
 
 Trang playlist dùng khung rộng hơn và ảnh ghép từ bốn bài được thêm gần nhất vào từng playlist. Playlist một bài dùng một ảnh; nếu thiếu bài hoặc ảnh lỗi, ô tương ứng dùng biểu tượng nhạc. Ảnh ghép chỉ được tính khi hiển thị, không sửa thứ tự phát hay bản ghi MongoDB.
 
-Tìm kiếm và gợi ý không còn giới hạn `videoDuration=medium`: giữ cả bài thường ngắn hơn 2:30 và bài dài. Ứng dụng kiểm tra routing của URL Shorts công khai để loại bản xác định là Shorts, có timeout và cache giới hạn. YouTube Data API không cung cấp cờ `isShort`; khi không xác minh được, ứng dụng giữ video để tránh loại nhầm bài nhạc. Cache MongoDB cũ được giữ nguyên, không xóa hàng loạt.
+Tìm kiếm và gợi ý chỉ hiển thị video có thời lượng xác định **lớn hơn 30 giây**, không giới hạn độ dài tối đa. Không dùng `videoDuration=medium`. Bộ lọc Shorts nghiêm ngặt loại cả Shorts và video chưa xác minh được do timeout, chặn hoặc lỗi mạng. Video trong phạm vi Shorts chỉ được hiển thị sau khi xác minh routing về bản video thường. Cache cũ dùng bộ lọc nới lỏng được kiểm tra lại khi đọc; không xóa hàng loạt hoặc sửa playlist, lịch sử và yêu thích. Chi tiết: `docs/youtube-filtering.md`.
 
 Trên trang chủ, cả Top Thịnh Hành, Xem nhiều nhất và Mới nhất đều lấy theo thể loại đang chọn. Top dùng tìm kiếm nổi bật theo thể loại, Xem nhiều nhất sắp xếp theo lượt xem, Mới nhất theo ngày đăng; đây không phải bảng xếp hạng thịnh hành chính thức của YouTube. Nhãn thể loại hiện trên cả ba phần. TikTok Remix dùng truy vấn `tiktok remix`, không ghép thêm `ncs`.
 
@@ -73,7 +73,7 @@ Khi đổi thể loại, phần đầu trang và khung tải hiện trước; ba
 
 Ô tìm kiếm có danh sách gợi ý ngay phía dưới: ưu tiên lịch sử khớp trên trình duyệt, sau đó gợi ý theo tìm kiếm YouTube. Hỗ trợ từ khóa tiếng Việt có/không dấu, phím lên/xuống, Enter, Escape và chọn bằng chuột. Khi nguồn gợi ý lỗi, lịch sử vẫn dùng được và người nghe vẫn có thể nhấn Enter để tìm bình thường.
 
-Gợi ý trực tuyến bắt đầu sau khi ngừng gõ 300ms và nhập ít nhất hai ký tự; không gọi YouTube Data API cho mỗi ký tự. Chọn gợi ý chỉ gửi từ khóa vào luồng tìm kiếm YouTube hiện có, không phát đoạn nghe thử. Lịch sử tìm kiếm không được gửi lên nguồn gợi ý hoặc MongoDB. Thời lượng bài thường không có giới hạn tối thiểu/tối đa; bộ lọc Shorts được giữ theo yêu cầu. Hợp đồng, nguồn và bằng chứng kiểm tra: `docs/search-suggestions.md`.
+Gợi ý trực tuyến bắt đầu sau khi ngừng gõ 300ms và nhập ít nhất hai ký tự; không gọi YouTube Data API cho mỗi ký tự. Chọn gợi ý chỉ gửi từ khóa vào luồng tìm kiếm YouTube hiện có, không phát đoạn nghe thử. Lịch sử tìm kiếm không được gửi lên nguồn gợi ý hoặc MongoDB. Kết quả video phải dài hơn 30 giây và vượt qua bộ lọc Shorts nghiêm ngặt; không giới hạn độ dài tối đa. Gợi ý từ khóa không có thời lượng video. Hợp đồng, nguồn và bằng chứng kiểm tra: `docs/search-suggestions.md`.
 
 ## Quyền truy cập và dữ liệu
 
@@ -84,7 +84,7 @@ Gợi ý trực tuyến bắt đầu sau khi ngừng gõ 300ms và nhập ít nh
 
 ## Thay đổi schema tương thích dữ liệu cũ
 
-`Favorite` thêm `sourceUrl`; `History` thêm `embedUrl` và `sourceUrl`. Cache YouTube thêm `songs.durationSeconds` và `shortsFiltered`. Các trường đều tương thích với bản ghi cũ; giữ nguyên collection, ID và index hiện có. Không cần migration ghi hàng loạt để chạy phiên bản này.
+`Favorite` thêm `sourceUrl`; `History` thêm `embedUrl` và `sourceUrl`. Cache YouTube thêm `songs.durationSeconds`, `shortsFiltered` và `shortsFilterVersion`. Các trường đều tương thích với bản ghi cũ; giữ nguyên collection, ID và index hiện có. Không cần migration ghi hàng loạt để chạy phiên bản này.
 
 Bản ghi SoundCloud cũ thiếu URL phát được bổ sung khi đọc từ thư viện cùng chủ sở hữu. Nếu không tìm thấy metadata, ID track dạng `sc_<số>` được dùng để dựng URL phát. ID playlist cũ không có metadata và không còn trong thư viện gốc cần import lại URL SoundCloud vì ID cũ không phân biệt track/playlist.
 

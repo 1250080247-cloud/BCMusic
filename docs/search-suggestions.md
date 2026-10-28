@@ -20,7 +20,7 @@ Only the currently typed prefix and locale are sent to Google. The user's local 
 
 ## Duration and lyrics clarification
 
-Regular video results have no minimum or maximum duration filter. No `videoDuration=medium` or 2:30 threshold is applied. A regression test retains a one-second ordinary video and a 26-hour ordinary video. Shorts classification remains separate and best effort, as previously requested. Network timeouts and the autocomplete debounce are unrelated to music duration.
+Video results now require a known duration strictly greater than 30 seconds, with no maximum. No `videoDuration=medium` or 2:30 threshold is applied. Shorts and unknown classifications are excluded, including timeouts or blocked probes. This supersedes the original one-second-video regression. Term suggestions themselves have no video duration. See [the current filtering contract](youtube-filtering.md).
 
 lyrics.ovh's lyrics API accepts artist and title, not a genre filter. Its documentation does not define a fixed list of supported music genres; finding text depends on its available sources and metadata matching. It supplies plain text in this app, with LRCLIB remaining the primary source for recording-matched timing. See its [lyrics endpoint contract](https://github.com/NTag/lyrics.ovh/blob/main/apiary.apib) and [current source description](https://github.com/NTag/lyrics.ovh/blob/main/README.md).
 

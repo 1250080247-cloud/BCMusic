@@ -1794,7 +1794,7 @@ select {
   border-color: transparent;
   background: linear-gradient(135deg, #fdf2f8, #f0abfc);
   color: #111827;
-  box-shadow: 0 16px 36px rgba(236, 72, 153, 0.2);
+  box-shadow: none;
 }
 
 .settings-trigger {
@@ -1947,6 +1947,22 @@ select {
 
 .category-scroller-wrapper {
   position: relative;
+}
+
+.category-scroller-nav {
+  cursor: grab;
+}
+
+.category-scroller-nav a:focus-visible {
+  outline: 2px solid var(--accent-pink);
+  outline-offset: -2px;
+  border-radius: 999px;
+}
+
+@media (min-width: 768px) {
+  .category-scroller-nav .category-pill {
+    padding-inline: 1rem;
+  }
 }
 
 .category-scroller-fade-left,

@@ -28,7 +28,7 @@ async function fixture({ cached = null, writeFails = false, searchFails = false,
 }
 
 test('a fresh filtered cache answers without YouTube API calls or Shorts probes', async () => {
-  const cached = { cachedAt: new Date(), shortsFiltered: true, songs: [song], nextPageToken: 'cached-next' };
+  const cached = { cachedAt: new Date(), shortsFiltered: true, shortsFilterVersion: 3, songs: [song], nextPageToken: 'cached-next' };
   const f = await fixture({ cached });
   const result = await f.getYouTubeSongs('music');
   assert.equal(result.items[0].id, song.id);
@@ -46,8 +46,21 @@ test('a legacy cache is filtered once and upgraded without extending its origina
   assert.equal(JSON.stringify(cached), original);
   assert.equal(f.writes.length, 1);
   assert.equal(f.writes[0][1].$set.shortsFiltered, true);
+  assert.equal(f.writes[0][1].$set.shortsFilterVersion, 3);
   assert.equal('cachedAt' in f.writes[0][1].$set, false);
   assert.equal(f.writes[0][2]?.upsert, undefined);
+});
+
+test('the current strict cache still applies the duration cutoff without rewriting stored data', async () => {
+  const cached = { cachedAt: new Date(), shortsFiltered: true, shortsFilterVersion: 3,
+    songs: [0, 30, 30.1, 93600, null].map((durationSeconds, index) => ({ ...song, id: `VIDEO00000${index}`, durationSeconds })) };
+  const before = JSON.stringify(cached);
+  const f = await fixture({ cached });
+  const result = await f.getYouTubeSongs('music');
+  assert.deepEqual(Array.from(result.items, item => item.durationSeconds), [30.1, 93600]);
+  assert.equal(JSON.stringify(cached), before);
+  assert.equal(f.requests.length, 0);
+  assert.equal(f.writes.length, 0);
 });
 
 test('simultaneous identical cache misses share one YouTube request pipeline', async () => {
@@ -82,7 +95,8 @@ test('YouTube search and statistics have explicit request deadlines', async () =
 
 test('the cache schema preserves optional duration and Shorts filtering metadata', async () => {
   const { default: SongCache } = await loadModule('src/models/SongCache.js');
-  const document = new SongCache({ cacheKey: 'test', query: 'test', order: 'relevance', songs: [song], shortsFiltered: true }).toObject();
+  const document = new SongCache({ cacheKey: 'test', query: 'test', order: 'relevance', songs: [song], shortsFiltered: true, shortsFilterVersion: 3 }).toObject();
   assert.equal(document.songs[0].durationSeconds, 120);
   assert.equal(document.shortsFiltered, true);
+  assert.equal(document.shortsFilterVersion, 3);
 });

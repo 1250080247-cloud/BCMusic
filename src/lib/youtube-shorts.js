@@ -1,5 +1,7 @@
 // The Data API has no public isShort flag. Resolve the public Shorts URL instead
 // of guessing from a song's length: ordinary videos can be shorter than 2:30.
+// A versioned cache marker prevents old, lenient results from bypassing checks.
+export const SHORTS_FILTER_VERSION = 3;
 const classificationCache = new Map();
 const CACHE_LIMIT = 1000;
 const KNOWN_TTL_MS = 24 * 60 * 60 * 1000;
@@ -50,18 +52,18 @@ async function classifyShort(id, timeout) {
     const plausibleLength = length === 0 || length >= 100000;
     return response.status === 200 && html && youtubeDocument && plausibleLength ? true : null;
   } catch {
-    // Network failures, timeouts and blocking must never remove a regular song.
+    // The caller hides unknown results, but retries instead of certifying them.
     return null;
   }
 }
 
 function longerThanShorts(song) {
   // YouTube currently limits Shorts to 3 minutes. This only avoids unnecessary
-  // probes; short-duration videos are never discarded on duration alone.
+  // probes; the caller separately enforces its minimum song duration.
   return Number.isFinite(song.durationSeconds) && song.durationSeconds > 180;
 }
 
-export async function removeYouTubeShorts(songs) {
+export async function filterYouTubeShorts(songs) {
   const deadline = Date.now() + BATCH_BUDGET_MS;
   const ids = [...new Set(songs.filter(song => VIDEO_ID.test(song.id) && !longerThanShorts(song)).map(song => song.id))].slice(0, 50);
   let cursor = 0;
@@ -76,9 +78,16 @@ export async function removeYouTubeShorts(songs) {
       remember(id, isShort);
     }
   }));
-  return songs.filter(song => {
+  let complete = true;
+  const items = songs.filter(song => {
+    if (!VIDEO_ID.test(song.id)) return false;
     if (longerThanShorts(song)) return true;
     const classification = classificationCache.get(song.id);
-    return !(classification?.expiresAt > Date.now() && classification.isShort === true);
+    if (!(classification?.expiresAt > Date.now()) || classification.isShort === null) {
+      complete = false;
+      return false;
+    }
+    return classification.isShort === false;
   });
+  return { items, complete };
 }
