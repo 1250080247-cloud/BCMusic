@@ -23,7 +23,7 @@ export const dictionaries = {
         popHits: 'Pop Hits',
       },
       noSongsTitle: 'Hệ thống chưa tìm thấy bài hát nào!',
-      noSongsDescription: 'Hãy thử kiểm tra lại API Key hoặc đổi sang thể loại nhạc khác.',
+      noSongsDescription: 'Chưa có bài phù hợp lúc này. Thử một thể loại khác hoặc quay lại sau nhé.',
       nextPage: 'Trang tiếp',
       previousPage: 'Trang trước',
       openHistory: 'Lịch sử',
@@ -37,8 +37,8 @@ export const dictionaries = {
       subtitle: 'Những bài hát được xem nhiều nhất trên YouTube',
     },
     dualView: {
-      mostViewed: '🔥 Xem nhiều nhất',
-      newest: '✨ Mới nhất',
+      mostViewed: 'Xem nhiều nhất',
+      newest: 'Mới nhất',
     },
     settings: {
       title: 'Cài đặt',
@@ -200,7 +200,7 @@ export const dictionaries = {
         popHits: 'Pop Hits',
       },
       noSongsTitle: 'No songs found yet!',
-      noSongsDescription: 'Check the API key or try another music category.',
+      noSongsDescription: 'No matching tracks right now. Try another category or check back soon.',
       nextPage: 'Next page',
       previousPage: 'Previous page',
       openHistory: 'History',
@@ -214,8 +214,8 @@ export const dictionaries = {
       subtitle: 'Most viewed music videos on YouTube',
     },
     dualView: {
-      mostViewed: '🔥 Most Viewed',
-      newest: '✨ Newest',
+      mostViewed: 'Most Viewed',
+      newest: 'Newest',
     },
     settings: {
       title: 'Settings',

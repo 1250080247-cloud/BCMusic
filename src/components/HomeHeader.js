@@ -2,7 +2,7 @@
 
 import Image from 'next/image';
 import Link from 'next/link';
-import { Clock, Settings } from 'lucide-react';
+import { Clock, Search } from 'lucide-react';
 import CategoryScroller from '@/components/CategoryScroller';
 import SettingsPanel from '@/components/SettingsPanel';
 import AuthModal from '@/components/AuthModal';
@@ -49,6 +49,7 @@ export default function HomeHeader({ categories, currentQuery, currentSearch }) 
 
         {/* Right: Action icons */}
         <div className="home-header-actions">
+          <Link href="/search" className="home-search-shortcut" aria-label={t.home.searchPlaceholder}><Search size={17} aria-hidden="true" /><span>{t.home.searchPlaceholder}</span></Link>
           <Link
             href="/history"
             className="home-header-icon-btn"

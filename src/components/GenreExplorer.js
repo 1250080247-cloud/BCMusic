@@ -67,9 +67,10 @@ function GenrePill({ item, isActive, onClick }) {
     background: isActive
       ? `${item.color}20`
       : hovered
-        ? 'rgba(30,41,59,0.92)'
-        : 'rgba(15,23,42,0.72)',
-    color: isActive ? item.color : hovered ? '#f8fafc' : '#cbd5e1',
+        ? 'var(--surface-hover)'
+        : 'var(--surface)',
+    color: 'var(--app-text)',
+    minHeight: 44,
     fontSize: '0.82rem',
     fontWeight: 600,
     cursor: 'pointer',
@@ -91,6 +92,7 @@ function GenrePill({ item, isActive, onClick }) {
   return (
     <button
       type="button"
+      aria-pressed={isActive}
       onClick={() => onClick(item)}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
@@ -122,7 +124,7 @@ function ExploreSongCard({ song, playlist }) {
         padding: '6px 8px',
         borderRadius: '10px',
         cursor: 'pointer',
-        background: hovered ? 'rgba(51,65,85,0.8)' : 'transparent',
+        background: hovered ? 'var(--surface-hover)' : 'transparent',
         transform: hovered ? 'translateX(3px)' : 'translateX(0)',
         transition: 'all 150ms ease',
       }}
@@ -141,7 +143,7 @@ function ExploreSongCard({ song, playlist }) {
       <div style={{ minWidth: 0, flex: 1 }}>
         <p
           style={{
-            fontSize: '0.78rem', fontWeight: 600, color: hovered ? '#ec4899' : '#f1f5f9',
+            fontSize: '0.78rem', fontWeight: 600, color: 'var(--app-text)',
             display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
             overflow: 'hidden', lineHeight: 1.3, transition: 'color 150ms ease',
             margin: 0,
@@ -174,7 +176,7 @@ function ExploreResults({ selected, songs, newestSongs, loading }) {
         borderBottom: '1px solid rgba(148,163,184,0.12)',
       }}>
         <Music2 size={16} style={{ color: '#ec4899', flexShrink: 0 }} />
-        <span style={{ fontSize: '0.85rem', fontWeight: 600, color: '#f1f5f9' }}>
+        <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--app-text)' }}>
           Nhạc theo thể loại:{' '}
           <strong style={{ color: selected.color }}>{selected.label}</strong>
         </span>
@@ -269,7 +271,7 @@ export default function GenreExplorer() {
   };
   const groupTitle = {
     fontSize: '1.1rem', fontWeight: 800,
-    color: '#f1f5f9', marginBottom: '0.85rem', lineHeight: 1.2,
+    color: 'var(--app-text)', marginBottom: '0.85rem', lineHeight: 1.2,
   };
   const grid = {
     display: 'grid',

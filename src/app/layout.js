@@ -4,6 +4,7 @@ import SettingsBridge from "@/components/SettingsBridge";
 import Providers from "@/components/Providers";
 import "./globals.css";
 import "@/components/now-playing.css";
+import "@/components/discovery.css";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
