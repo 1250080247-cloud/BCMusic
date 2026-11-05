@@ -40,3 +40,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Android build tools downloaded locally for BCMusic (never source artifacts)
+/.android-tools/

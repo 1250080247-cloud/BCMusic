@@ -2,6 +2,8 @@
 
 Ứng dụng nghe nhạc YouTube và SoundCloud, dùng Next.js App Router, NextAuth và MongoDB/Mongoose.
 
+Bản Android cá nhân dùng Flutter nằm trong [mobile/](mobile/README.md), cùng hướng dẫn kiểm thử và build APK.
+
 ## Chạy dự án
 
 Dùng Node.js 24 và npm 11.19.0 (được ghim trong `packageManager`; repo có `package-lock.json`).
