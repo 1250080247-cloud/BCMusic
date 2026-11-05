@@ -7,11 +7,15 @@ import 'package:bcmusic/discovery_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'controller_test.dart' show FakeMusicPlatform;
+import 'controller_test.dart' show FakeMusicPlatform, sample;
 
 class EmptyDiscoveryRepository implements DiscoveryRepository {
+  EmptyDiscoveryRepository({this.songs = const []});
+
+  final List<DiscoverySong> songs;
+
   @override
-  Future<List<DiscoverySong>> feed(String query, String order) async => [];
+  Future<List<DiscoverySong>> feed(String query, String order) async => songs;
   @override
   Future<List<DiscoverySong>> search(String query) async => [];
   @override
@@ -19,6 +23,57 @@ class EmptyDiscoveryRepository implements DiscoveryRepository {
 }
 
 void main() {
+  testWidgets('feed menu downloads the selected song into the library', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final platform = FakeMusicPlatform();
+    final controller = MusicController(platform);
+    await controller.initialize();
+    final discovery = DiscoveryController(
+      EmptyDiscoveryRepository(
+        songs: const [
+          DiscoverySong(id: 'M7lc1UVf-VE', title: 'Bài thử', artist: 'Nghệ sĩ'),
+        ],
+      ),
+    );
+    await tester.pumpWidget(
+      BCMusicApp(controller: controller, discovery: discovery),
+    );
+    await tester.pumpAndSettle();
+    final menu = find.descendant(
+      of: find.byWidgetPredicate(
+        (widget) => widget is FeedRows && widget.ranked,
+      ),
+      matching: find.byWidgetPredicate(
+        (widget) =>
+            widget is PopupMenuButton && widget.tooltip == 'Tùy chọn Bài thử',
+      ),
+    );
+    await tester.scrollUntilVisible(
+      menu,
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(menu);
+    await tester.pumpAndSettle();
+    expect(find.text('Tải xuống'), findsOneWidget);
+    await tester.tap(find.text('Tải xuống'));
+    await tester.pump();
+    platform.pending[sample.sourceUrl]!.complete(sample);
+    await tester.pumpAndSettle();
+    expect(find.text('Thư viện offline'), findsOneWidget);
+    expect(platform.enqueued, [sample.id]);
+    expect(platform.playedSources, isEmpty);
+    await tester.pumpWidget(const SizedBox());
+    controller.dispose();
+    discovery.dispose();
+    await platform.updates.close();
+  });
+
   testWidgets('feed shows five rows and scrolls to the tenth', (tester) async {
     final songs = List.generate(
       12,
@@ -35,7 +90,6 @@ void main() {
           body: FeedRows(
             section: FeedSection(songs: songs, loading: false),
             ranked: true,
-            onSong: (_, _) {},
             onPlay: (_, queue) => playedQueue = queue,
             onRetry: () {},
           ),
@@ -43,13 +97,13 @@ void main() {
       ),
     );
     final list = find.byType(ListView);
-    expect(find.byTooltip('Phát Bài 5').hitTestable(), findsOneWidget);
-    expect(find.byTooltip('Phát Bài 6').hitTestable(), findsNothing);
+    expect(find.text('Bài 5').hitTestable(), findsOneWidget);
+    expect(find.text('Bài 6').hitTestable(), findsNothing);
     await tester.scrollUntilVisible(find.text('Bài 10'), 190);
     await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('Phát Bài 10'));
+    await tester.tap(find.text('Bài 10'));
     expect(playedQueue, hasLength(10));
-    expect(find.byTooltip('Phát Bài 11'), findsNothing);
+    expect(find.text('Bài 11'), findsNothing);
     expect(tester.getSize(list).height, lessThan(400));
   });
 
@@ -73,7 +127,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('@listener'), findsOneWidget);
     expect(find.text('Đăng nhập BCMusic'), findsNothing);
-    await tester.tap(find.text('Đóng'));
+    await tester.pageBack();
     await tester.pumpAndSettle();
     expect(find.text('@listener'), findsNothing);
     await tester.pumpWidget(const SizedBox());

@@ -149,7 +149,7 @@ class MusicLibrary private constructor(val context: Context) {
             "playback" to mapOf("trackId" to current, "track" to currentTrack,
                 "offline" to offline, "hasNext" to (p?.hasNextMediaItem() ?: false),
                 "hasPrevious" to (p?.hasPreviousMediaItem() ?: false),
-                "isPlaying" to (p?.isPlaying ?: false), "positionMs" to (p?.currentPosition ?: 0),
+                "isPlaying" to (p?.isPlaying ?: false), "ended" to (p?.playbackState == androidx.media3.common.Player.STATE_ENDED), "positionMs" to (p?.currentPosition ?: 0),
                 "durationMs" to ((p?.duration ?: 0).coerceAtLeast(0)), "error" to playbackError))
     }
 

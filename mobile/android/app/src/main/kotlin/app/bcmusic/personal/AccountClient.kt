@@ -26,14 +26,14 @@ import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
-data class AccountProfile(val id: String, val name: String, val username: String) {
-    fun toMap(): Map<String, String> = mapOf("id" to id, "name" to name, "username" to username)
+data class AccountProfile(val id: String, val name: String, val username: String, val avatarVersion: String = "") {
+    fun toMap(): Map<String, String> = mapOf("id" to id, "name" to name, "username" to username, "avatarVersion" to avatarVersion)
 
     companion object {
         fun read(data: JSONObject?): AccountProfile? {
             val id = data?.optString("id")?.takeIf { it.isNotBlank() && it.length <= 128 } ?: return null
             val username = data.optString("username").take(80)
-            return AccountProfile(id, data.optString("name").take(160).ifBlank { username.ifBlank { "BCMusic" } }, username)
+            return AccountProfile(id, data.optString("name").take(160).ifBlank { username.ifBlank { "BCMusic" } }, username, data.optString("avatarVersion").take(20))
         }
     }
 }
@@ -172,28 +172,127 @@ internal class AccountClient(
         storage.write("google", null)
     }
 
+    private fun activeSession(): Pair<AccountProfile, AccountCookies> {
+        val saved = storage.read("session")
+        val account = profile ?: throw SourceFailure("SESSION", "Hãy đăng nhập để mở hồ sơ.")
+        val cookies = saved?.optJSONArray("cookies")
+            ?: throw SourceFailure("SESSION", "Phiên đã hết hạn. Hãy đăng nhập lại.")
+        val jar = AccountCookies()
+        jar.saveFromResponse(origin, (0 until cookies.length()).mapNotNull { Cookie.parse(origin, cookies.optString(it)) })
+        if (jar.sessions().isEmpty()) throw SourceFailure("SESSION", "Phiên đã hết hạn. Hãy đăng nhập lại.")
+        return account to jar
+    }
+
+    @Synchronized fun updateProfile(displayName: String, image: String?) {
+        val (account, jar) = activeSession()
+        val name = displayName.trim()
+        if (name.length !in 1..50) throw SourceFailure("INPUT", "Tên hiển thị phải từ 1 đến 50 ký tự.")
+        if (image != null && image.length > 2_800_000) throw SourceFailure("INPUT", "Ảnh đại diện vượt quá 2 MB.")
+        val body = JSONObject().put("displayName", name).apply { if (image != null) put("image", image) }
+        val (status, response) = request(jar, "/api/user/update", jsonBody(body))
+        if (status == 401) throw SourceFailure("SESSION", "Phiên đã hết hạn. Hãy đăng nhập lại.")
+        val data = response.optJSONObject("data")
+        if (status != 200 || !response.optBoolean("success") || data == null || data.optString("id") != account.id) {
+            throw SourceFailure("PROFILE", if (status == 400) "Kiểm tra tên và ảnh PNG, JPEG, GIF, WebP hoặc URL HTTPS." else "Chưa lưu được hồ sơ.")
+        }
+        val updated = account.copy(
+            name = data.optString("displayName", name),
+            avatarVersion = if (image != null) System.currentTimeMillis().toString() else account.avatarVersion,
+        )
+        storeSession(updated, jar)
+    }
+
+    @Synchronized fun profileCollections(): String {
+        val (account, jar) = activeSession()
+        fun fetch(path: String): JSONArray {
+            val (status, response) = request(jar, path)
+            if (status == 401) throw SourceFailure("SESSION", "Phiên đã hết hạn. Hãy đăng nhập lại.")
+            return response.optJSONArray("data")?.takeIf { status == 200 && response.optBoolean("success") }
+                ?: throw SourceFailure("PROFILE", "Chưa tải được dữ liệu hồ sơ.")
+        }
+        val favorites = fetch("/api/favorites")
+        val playlists = fetch("/api/playlist")
+        storeSession(account, jar)
+        return JSONObject().put("favorites", favorites).put("playlists", playlists).toString()
+    }
+
+    @Synchronized fun savePlaylistSong(playlistId: String?, playlistName: String?, song: JSONObject) {
+        val (account, jar) = activeSession()
+        val id = song.optString("id")
+        val title = song.optString("title").trim()
+        val source = SourceUrl.parse(song.optString("sourceUrl"))
+        if (id.length !in 1..512 || title.length !in 1..500)
+            throw SourceFailure("INPUT", "Thông tin bài hát không hợp lệ.")
+        val name = playlistName.orEmpty().trim()
+        if (playlistId == null && name.length !in 1..80)
+            throw SourceFailure("INPUT", "Tên playlist phải từ 1 đến 80 ký tự.")
+        val target = playlistId ?: run {
+            val (status, result) = request(jar, "/api/playlist", jsonBody(JSONObject().put("name", name)))
+            requirePlaylistSuccess(status, result)
+            result.optJSONObject("data")?.optString("id").orEmpty()
+        }
+        validatePlaylistId(target)
+        val metadata = JSONObject().put("id", id).put("title", title)
+            .put("artist", song.optString("artist").take(500)).put("sourceUrl", source.url)
+            .put("source", source.provider)
+            .put("thumbnail", song.optString("thumbnail").take(2048))
+        val body = JSONObject().put("playlistId", target).put("song", metadata)
+        val (status, result) = request(jar, "/api/playlist/song", jsonBody(body))
+        if (status != 409 || result.optString("message") != "already_exists") requirePlaylistSuccess(status, result)
+        storeSession(account, jar)
+    }
+
+    @Synchronized fun removePlaylistSong(playlistId: String, songId: String) {
+        validatePlaylistId(playlistId)
+        if (songId.length !in 1..512) throw SourceFailure("INPUT", "Thông tin bài hát không hợp lệ.")
+        val (account, jar) = activeSession()
+        val body = JSONObject().put("playlistId", playlistId).put("songId", songId)
+        val (status, result) = request(jar, "/api/playlist/song", jsonBody(body), delete = true)
+        requirePlaylistSuccess(status, result)
+        storeSession(account, jar)
+    }
+
+    private fun validatePlaylistId(id: String) {
+        if (!id.matches(Regex("[a-fA-F0-9]{24}"))) throw SourceFailure("INPUT", "Playlist không hợp lệ.")
+    }
+
+    private fun requirePlaylistSuccess(status: Int, response: JSONObject) {
+        if (status == 401) throw SourceFailure("SESSION", "Phiên đã hết hạn. Hãy đăng nhập lại.")
+        if (status != 200 || !response.optBoolean("success"))
+            throw SourceFailure("PLAYLIST", "Chưa lưu được thay đổi trong playlist.")
+    }
+
+    private fun storeSession(account: AccountProfile, jar: AccountCookies) {
+        storage.write("session", JSONObject().put("profile", JSONObject(account.toMap()))
+            .put("cookies", JSONArray(jar.sessions().map(Cookie::toString))))
+        profile = account
+    }
+
     private fun acceptSession(jar: AccountCookies) {
         val (status, result) = request(jar, "/api/auth/session")
         val user = AccountProfile.read(result.optJSONObject("user"))
         val cookies = jar.sessions()
         if (status != 200 || user == null || cookies.isEmpty())
             throw SourceFailure("SESSION", "Không xác nhận được tài khoản BCMusic.")
-        storage.write("session", JSONObject().put("profile", JSONObject(user.toMap()))
-            .put("cookies", JSONArray(cookies.map(Cookie::toString))))
-        profile = user
+        storeSession(user, jar)
     }
 
-    private fun request(jar: AccountCookies, path: String, body: RequestBody? = null): Pair<Int, JSONObject> {
+    private fun request(jar: AccountCookies, path: String, body: RequestBody? = null, delete: Boolean = false): Pair<Int, JSONObject> {
         val url = origin.newBuilder().encodedPath(path).build()
         val request = Request.Builder().url(url).header("Accept", "application/json")
-            .header("Cache-Control", "no-store").apply { if (body != null) post(body) }.build()
+            .header("Cache-Control", "no-store").apply {
+                if (body != null) {
+                    if (delete) delete(body) else post(body)
+                }
+            }.build()
         val client = transport.newBuilder().cookieJar(jar).followRedirects(false)
             .followSslRedirects(false).callTimeout(20, TimeUnit.SECONDS).build()
         try {
             client.newCall(request).execute().use { response ->
                 val source = response.body?.source()
-                source?.request(512L * 1024 + 1)
-                if (source != null && source.buffer.size > 512L * 1024) throw IOException("Account response too large")
+                val maxBytes = if (path == "/api/user/update") 3L * 1024 * 1024 else 512L * 1024
+                source?.request(maxBytes + 1)
+                if (source != null && source.buffer.size > maxBytes) throw IOException("Account response too large")
                 val data = source?.readUtf8()?.let { runCatching { JSONObject(it) }.getOrNull() } ?: JSONObject()
                 if (response.code >= 500 || response.code == 429)
                     throw SourceFailure("ACCOUNT_NETWORK", "Máy chủ tài khoản đang bận. Hãy thử lại sau.")

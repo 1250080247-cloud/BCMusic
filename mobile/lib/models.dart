@@ -135,6 +135,7 @@ class PlaybackState {
   const PlaybackState({
     this.trackId,
     this.isPlaying = false,
+    this.ended = false,
     this.positionMs = 0,
     this.durationMs = 0,
     this.error,
@@ -144,7 +145,7 @@ class PlaybackState {
     this.hasPrevious = false,
   });
   final String? trackId, error;
-  final bool isPlaying;
+  final bool isPlaying, ended;
   final int positionMs, durationMs;
   final OfflineTrack? track;
   final bool offline, hasNext, hasPrevious;
@@ -152,6 +153,7 @@ class PlaybackState {
   factory PlaybackState.fromMap(Map<Object?, Object?> map) => PlaybackState(
     trackId: map['trackId'] as String?,
     isPlaying: map['isPlaying'] == true,
+    ended: map['ended'] == true,
     positionMs: ((map['positionMs'] as num?)?.toInt() ?? 0).clamp(0, 1 << 53),
     durationMs: ((map['durationMs'] as num?)?.toInt() ?? 0).clamp(0, 1 << 53),
     error: map['error'] as String?,
@@ -236,9 +238,14 @@ class LibrarySnapshot {
 }
 
 class AccountProfile {
-  const AccountProfile({required this.name, required this.username, this.id});
+  const AccountProfile({
+    required this.name,
+    required this.username,
+    this.id,
+    this.avatarVersion,
+  });
   final String name, username;
-  final String? id;
+  final String? id, avatarVersion;
 
   Uri? get avatarUri {
     final userId = id;
@@ -248,6 +255,7 @@ class AccountProfile {
     }
     return Uri.https('bc-music-gilt.vercel.app', '/api/user/avatar', {
       'userId': userId,
+      if (avatarVersion?.isNotEmpty == true) 'v': avatarVersion!,
     });
   }
 
@@ -255,6 +263,7 @@ class AccountProfile {
     name: (data['name'] as String?) ?? 'BCMusic',
     username: (data['username'] as String?) ?? '',
     id: data['id'] as String?,
+    avatarVersion: data['avatarVersion'] as String?,
   );
 }
 

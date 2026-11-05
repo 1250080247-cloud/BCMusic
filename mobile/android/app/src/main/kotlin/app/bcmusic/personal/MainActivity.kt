@@ -42,6 +42,7 @@ class MainActivity : FlutterActivity(), EventChannel.StreamHandler {
     private var playbackRequest = 0
     private var exportDestination: CancellableContinuation<Uri?>? = null
     private var exportingMp4 = false
+    private var profileImage: CancellableContinuation<Uri?>? = null
 
     private suspend fun chooseMp4Destination(title: String): Uri? =
         suspendCancellableCoroutine { continuation ->
@@ -63,6 +64,12 @@ class MainActivity : FlutterActivity(), EventChannel.StreamHandler {
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == 7042) {
+            val continuation = profileImage
+            profileImage = null
+            continuation?.resume(if (resultCode == Activity.RESULT_OK) data?.data else null)
+            return
+        }
         if (requestCode != 7041) return
         val continuation = exportDestination
         exportDestination = null
@@ -70,6 +77,43 @@ class MainActivity : FlutterActivity(), EventChannel.StreamHandler {
     }
 
     private val listener: () -> Unit = { sink?.success(library.snapshot()) }
+
+    private suspend fun pickProfileImage(): String? {
+        if (profileImage != null) throw SourceFailure("BUSY", "Đang chọn ảnh đại diện.")
+        val uri = suspendCancellableCoroutine<Uri?> { continuation ->
+            profileImage = continuation
+            continuation.invokeOnCancellation { profileImage = null }
+            val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                addCategory(Intent.CATEGORY_OPENABLE)
+                type = "image/*"
+            }
+            try {
+                startActivityForResult(intent, 7042)
+            } catch (error: Exception) {
+                profileImage = null
+                continuation.resumeWithException(error)
+            }
+        } ?: return null
+        return withContext(Dispatchers.IO) {
+            val mime = contentResolver.getType(uri)
+            if (mime !in setOf("image/jpeg", "image/png", "image/gif", "image/webp")) {
+                throw SourceFailure("INPUT", "Hãy chọn ảnh PNG, JPEG, GIF hoặc WebP.")
+            }
+            val data = java.io.ByteArrayOutputStream()
+            val stream = contentResolver.openInputStream(uri)
+                ?: throw SourceFailure("INPUT", "Không đọc được ảnh đã chọn.")
+            stream.use {
+                val buffer = ByteArray(8192)
+                while (true) {
+                    val read = it.read(buffer)
+                    if (read < 0) break
+                    if (data.size() + read > 2 * 1024 * 1024) throw SourceFailure("INPUT", "Ảnh phải nhỏ hơn 2 MB.")
+                    data.write(buffer, 0, read)
+                }
+            }
+            "data:$mime;base64,${android.util.Base64.encodeToString(data.toByteArray(), android.util.Base64.NO_WRAP)}"
+        }
+    }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -244,6 +288,32 @@ class MainActivity : FlutterActivity(), EventChannel.StreamHandler {
                         } finally {
                             exportingMp4 = false
                         }
+                    }
+                    "getProfileCollections" -> {
+                        result.success(withContext(Dispatchers.IO) { library.account.profileCollections() })
+                    }
+                    "saveWebPlaylistSong" -> {
+                        val playlistId = call.argument<String>("playlistId")
+                        val playlistName = call.argument<String>("playlistName")
+                        val song = call.argument<Map<String, String>>("song").orEmpty()
+                        withContext(Dispatchers.IO) {
+                            library.account.savePlaylistSong(playlistId, playlistName, org.json.JSONObject(song))
+                        }
+                        result.success(null)
+                    }
+                    "removeWebPlaylistSong" -> {
+                        val playlistId = call.argument<String>("playlistId").orEmpty()
+                        val songId = call.argument<String>("songId").orEmpty()
+                        withContext(Dispatchers.IO) { library.account.removePlaylistSong(playlistId, songId) }
+                        result.success(null)
+                    }
+                    "pickProfileImage" -> result.success(pickProfileImage())
+                    "updateProfile" -> {
+                        val name = call.argument<String>("displayName").orEmpty()
+                        val image = call.argument<String>("image")
+                        withContext(Dispatchers.IO) { library.account.updateProfile(name, image) }
+                        library.emit()
+                        result.success(null)
                     }
                     "shareTrack" -> {
                         val url = requireNotNull(call.argument<String>("url"))

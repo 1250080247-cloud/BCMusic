@@ -21,6 +21,60 @@ class MusicController extends ChangeNotifier {
   List<PlaybackQueueItem> _sourceQueueItems = const [];
   List<PlaybackQueueItem> get sourceQueueItems => _sourceQueueItems;
   int? get sourceQueueIndex => _sourceQueue?.$2;
+  List<String>? _offlineQueueIds;
+  final _queuedBeforePlayback = <PlaybackQueueItem>[];
+  String? _handledEnd;
+
+  PlaybackQueueItem? _queueItemFor(OfflineTrack? track) => track == null
+      ? null
+      : PlaybackQueueItem(
+          url: track.sourceUrl,
+          title: track.title,
+          artist: track.artist,
+          artworkUrl: track.artworkUrl,
+        );
+
+  bool enqueueSong(PlaybackQueueItem item) {
+    if (openingSource) return false;
+    final current = _queueItemFor(
+      playback.track ??
+          tracks.where((track) => track.id == playback.trackId).firstOrNull,
+    );
+    if (_sourceQueue case (final urls, final index)) {
+      if (urls.contains(item.url)) return false;
+      _sourceQueue = ([...urls, item.url], index);
+      _sourceQueueItems = [..._sourceQueueItems, item];
+    } else if (current != null) {
+      final ready = {
+        if (playback.offline)
+          for (final track in tracks.where((track) => track.isReady))
+            track.id: track,
+      };
+      final entries = <PlaybackQueueItem>[
+        for (final id in _offlineQueueIds ?? ready.keys)
+          ?_queueItemFor(ready[id]),
+      ];
+      final currentIndex = entries.indexWhere(
+        (entry) => entry.url == current.url,
+      );
+      if (currentIndex < 0) entries.insert(0, current);
+      if (entries.any((entry) => entry.url == item.url)) return false;
+      entries.add(item);
+      _sourceQueue = (
+        entries.map((entry) => entry.url).toList(),
+        currentIndex < 0 ? 0 : currentIndex,
+      );
+      _sourceQueueItems = entries;
+    } else {
+      if (_queuedBeforePlayback.any((entry) => entry.url == item.url)) {
+        return false;
+      }
+      _queuedBeforePlayback.add(item);
+    }
+    _notify();
+    return true;
+  }
+
   bool _disposed = false;
   int _request = 0, _shareSequence = 0;
   final Set<String> _pending = {};
@@ -58,6 +112,22 @@ class MusicController extends ChangeNotifier {
   void _accept(LibrarySnapshot next) {
     if (_disposed) return;
     snapshot = next;
+    if (!next.playback.ended) _handledEnd = null;
+    if (!openingSource && next.playback.track != null) {
+      if (_sourceQueue case (final urls, final index)) {
+        final actual = urls.indexOf(next.playback.track!.sourceUrl);
+        if (actual >= 0 && actual != index) _sourceQueue = (urls, actual);
+      }
+    }
+    if (!openingSource &&
+        !repeatOne &&
+        next.playback.ended &&
+        _sourceQueue != null &&
+        canSkip(1) &&
+        _handledEnd != next.playback.trackId) {
+      _handledEnd = next.playback.trackId;
+      unawaited(skip(1));
+    }
     lightTheme.value = next.preferences.light;
     loading = !next.initialized;
     _notify();
@@ -110,6 +180,12 @@ class MusicController extends ChangeNotifier {
     _notify();
   }
 
+  Future<void> downloadSource(String url) async {
+    final request = _request + 1;
+    await inspect(url);
+    if (!_disposed && request == _request) await downloadPreview();
+  }
+
   Future<void> retry(OfflineTrack track) =>
       _forTrack(track.id, () => platform.retry(track.id));
   Future<void> remove(OfflineTrack track) =>
@@ -123,6 +199,29 @@ class MusicController extends ChangeNotifier {
       if (request == _playRequest) {
         _sourceQueue = null;
         _sourceQueueItems = const [];
+        _offlineQueueIds = queueIds;
+        final pending = List<PlaybackQueueItem>.of(_queuedBeforePlayback);
+        _queuedBeforePlayback.clear();
+        if (pending.isNotEmpty) {
+          final ready = {
+            for (final item in tracks.where((item) => item.isReady))
+              item.id: item,
+          };
+          final items = <PlaybackQueueItem>[
+            for (final id in queueIds ?? ready.keys) ?_queueItemFor(ready[id]),
+          ];
+          if (!items.any((item) => item.url == track.sourceUrl)) {
+            items.insert(0, _queueItemFor(track)!);
+          }
+          for (final entry in pending) {
+            if (!items.any((item) => item.url == entry.url)) items.add(entry);
+          }
+          _sourceQueue = (
+            items.map((item) => item.url).toList(),
+            items.indexWhere((item) => item.url == track.sourceUrl),
+          );
+          _sourceQueueItems = items;
+        }
       }
     });
   }
@@ -134,9 +233,16 @@ class MusicController extends ChangeNotifier {
   }) async {
     try {
       final source = SourceLink.parse(input).url;
-      final urls = queue.toSet().toList(growable: false);
+      final urls = <String>{
+        ...queue,
+        if (queue.isEmpty && _queuedBeforePlayback.isNotEmpty) source,
+        ..._queuedBeforePlayback.map((item) => item.url),
+      }.toList(growable: false);
       final index = urls.indexOf(source);
-      final metadata = {for (final item in queueItems) item.url: item};
+      final metadata = {
+        for (final item in [...queueItems, ..._queuedBeforePlayback])
+          item.url: item,
+      };
       final items = [
         for (final url in urls)
           metadata[url] ??
@@ -151,6 +257,9 @@ class MusicController extends ChangeNotifier {
         index < 0 ? null : (urls, index),
         queueItems: items,
       );
+      if (error == null && sourceQueueIndex != null) {
+        _queuedBeforePlayback.removeWhere((item) => urls.contains(item.url));
+      }
     } on FormatException catch (error) {
       _setError(error);
     }

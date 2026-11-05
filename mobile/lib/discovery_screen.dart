@@ -5,6 +5,12 @@ import 'package:flutter/material.dart';
 import 'app_theme.dart';
 import 'discovery.dart';
 import 'models.dart';
+import 'track_actions.dart';
+
+typedef DiscoveryTrackAction = void Function(
+  TrackAction action,
+  DiscoverySong song,
+);
 
 typedef DiscoverySelection = void Function(
   DiscoverySong song,
@@ -17,6 +23,8 @@ class DiscoveryScreen extends StatelessWidget {
     required this.controller,
     required this.onSong,
     required this.onPlay,
+    required this.onTrackAction,
+    required this.onDownload,
     required this.onLibrary,
     required this.onMotion,
     this.playing = false,
@@ -24,6 +32,8 @@ class DiscoveryScreen extends StatelessWidget {
     this.motion = true,
   });
   final DiscoveryController controller;
+  final DiscoveryTrackAction onTrackAction;
+  final ValueChanged<String> onDownload;
   final DiscoverySelection onSong, onPlay;
   final VoidCallback onLibrary;
   final ValueChanged<bool> onMotion;
@@ -156,7 +166,8 @@ class DiscoveryScreen extends StatelessWidget {
                     key: ValueKey((controller.genreIndex, index)),
                     section: controller.sections[index],
                     ranked: index == 1,
-                    onSong: onSong,
+                    onTrackAction: onTrackAction,
+                    onDownload: onDownload,
                     onPlay: onPlay,
                     onRetry: () =>
                         controller.selectGenre(controller.genreIndex),
@@ -452,13 +463,16 @@ class FeedRows extends StatelessWidget {
   const FeedRows({
     super.key,
     required this.section,
-    required this.onSong,
+    this.onTrackAction,
+    this.onDownload,
     required this.onPlay,
     required this.onRetry,
     this.ranked = false,
   });
   final FeedSection section;
-  final DiscoverySelection onSong, onPlay;
+  final DiscoverySelection onPlay;
+  final DiscoveryTrackAction? onTrackAction;
+  final ValueChanged<String>? onDownload;
   final VoidCallback onRetry;
   final bool ranked;
   @override
@@ -478,6 +492,7 @@ class FeedRows extends StatelessWidget {
       );
     }
     final songs = section.songs.take(10).toList(growable: false);
+    final download = onDownload;
     final scale = MediaQuery.textScalerOf(context);
     final rowHeight =
         24.0 +
@@ -501,7 +516,7 @@ class FeedRows extends StatelessWidget {
               borderRadius: BorderRadius.circular(16),
               child: InkWell(
                 borderRadius: BorderRadius.circular(16),
-                onTap: () => onSong(song, songs),
+                onTap: () => onPlay(song, songs),
                 child: Padding(
                   padding: const EdgeInsets.all(8),
                   child: Row(
@@ -547,11 +562,14 @@ class FeedRows extends StatelessWidget {
                           ],
                         ),
                       ),
-                      IconButton(
-                        tooltip: 'Phát ${song.title}',
-                        onPressed: () => onPlay(song, songs),
-                        icon: const Icon(Icons.play_arrow_rounded),
-                      ),
+                      if (onTrackAction case final handle?)
+                        TrackMenu(
+                          title: song.title,
+                          onSelected: (action) => handle(action, song),
+                          onDownload: download == null
+                              ? null
+                              : () => download(song.sourceUrl),
+                        ),
                     ],
                   ),
                 ),

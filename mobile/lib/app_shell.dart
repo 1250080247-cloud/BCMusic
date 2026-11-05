@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import 'account_screen.dart';
@@ -7,9 +9,12 @@ import 'discovery.dart';
 import 'discovery_screen.dart';
 import 'home_screen.dart';
 import 'models.dart';
+import 'platform_bridge.dart';
 import 'player_controls.dart';
 import 'playlist_screen.dart';
+import 'profile_screen.dart';
 import 'settings_screen.dart';
+import 'track_actions.dart';
 
 class AppShell extends StatefulWidget {
   const AppShell({
@@ -25,7 +30,7 @@ class AppShell extends StatefulWidget {
 }
 
 class _AppShellState extends State<AppShell> {
-  static const _library = 2, _playlists = 3;
+  static const _library = 2;
   int _tab = 0, _shareSequence = 0;
   bool _initialized = false;
   MusicController get _music => widget.controller;
@@ -81,46 +86,10 @@ class _AppShellState extends State<AppShell> {
     );
   }
 
-  void _showProfile(AccountProfile account) {
-    showModalBottomSheet<void>(
-      context: context,
-      useSafeArea: true,
-      isScrollControlled: true,
-      builder: (context) => SafeArea(
-        top: false,
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(24, 8, 24, 28),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text('Hồ sơ', style: Theme.of(context).textTheme.titleLarge),
-              const SizedBox(height: 20),
-              _AccountAvatar(account: account, size: 88),
-              const SizedBox(height: 16),
-              Text(
-                account.name,
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.headlineSmall,
-              ),
-              if (account.username.isNotEmpty) ...[
-                const SizedBox(height: 6),
-                Text(
-                  '@${account.username}',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: context.palette.muted),
-                ),
-              ],
-              const SizedBox(height: 20),
-              OutlinedButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Đóng'),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
+  void _showProfile() => Navigator.push<void>(
+    context,
+    MaterialPageRoute(builder: (_) => ProfileScreen(controller: _music)),
+  );
 
   Future<void> _playSong(DiscoverySong song, List<DiscoverySong> queue) =>
       _music.playSource(
@@ -201,39 +170,68 @@ class _AppShellState extends State<AppShell> {
     }
   }
 
-  Future<void> _addToPlaylist(OfflineTrack track) async {
-    final playlists = _music.snapshot.playlists;
-    if (playlists.isEmpty) {
-      _select(_playlists);
-      await createLocalPlaylist(context, _music, initialTrack: track);
-      return;
-    }
-    final id = await showDialog<String>(
-      context: context,
-      builder: (context) => SimpleDialog(
-        title: const Text('Thêm vào playlist'),
-        children: [
-          for (final playlist in playlists)
-            SimpleDialogOption(
-              onPressed: playlist.trackIds.contains(track.id)
-                  ? null
-                  : () => Navigator.pop(context, playlist.id),
-              child: ListTile(
-                leading: Icon(
-                  playlist.trackIds.contains(track.id)
-                      ? Icons.check_rounded
-                      : Icons.queue_music_rounded,
-                ),
-                title: Text(playlist.name),
-                subtitle: playlist.trackIds.contains(track.id)
-                    ? const Text('Đã thêm')
-                    : null,
-              ),
-            ),
-        ],
-      ),
+  Future<void> _addToPlaylist(OfflineTrack track) =>
+      pickLocalPlaylist(context, _music, track);
+
+  void _downloadSong(String url) {
+    _select(_library);
+    unawaited(_music.downloadSource(url));
+  }
+
+  Future<void> _discoveryTrackAction(
+    TrackAction action,
+    DiscoverySong song,
+  ) async {
+    final item = PlaybackQueueItem(
+      url: song.sourceUrl,
+      title: song.title,
+      artist: song.artist,
+      artworkUrl: song.thumbnail,
     );
-    if (id != null && mounted) await _music.addToPlaylist(id, track);
+    switch (action) {
+      case TrackAction.share:
+        await shareSong(context, _music, item.url);
+      case TrackAction.playlist:
+        final ready = _music.tracks
+            .where((track) => track.isReady && track.sourceUrl == item.url)
+            .firstOrNull;
+        if (ready != null) {
+          await _addToPlaylist(ready);
+          return;
+        }
+        final platform = _music.platform;
+        if (platform is AndroidMusicPlatform &&
+            _music.snapshot.account != null) {
+          await pickWebPlaylist(context, platform, song.id, item);
+          return;
+        }
+        final download = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Thêm vào danh sách phát'),
+            content: const Text(
+              'Tải bài vào Thư viện trước để thêm vào playlist offline.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Để sau'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Mở Thư viện'),
+              ),
+            ],
+          ),
+        );
+        if (mounted && download == true) _downloadSong(item.url);
+      case TrackAction.queue:
+        enqueueSong(context, _music, item);
+      case TrackAction.info:
+        await showTrackInfo(context, item, durationMs: song.durationMs);
+      case TrackAction.remove:
+        break;
+    }
   }
 
   @override
@@ -251,6 +249,8 @@ class _AppShellState extends State<AppShell> {
           onLibrary: () => _select(_library),
           onSong: _song,
           onPlay: _playSong,
+          onTrackAction: _discoveryTrackAction,
+          onDownload: _downloadSong,
         ),
         SearchScreen(
           controller: widget.discovery,
@@ -313,12 +313,12 @@ class _AppShellState extends State<AppShell> {
               tooltip: 'Tài khoản',
               icon: account == null
                   ? const Icon(Icons.account_circle_outlined)
-                  : _AccountAvatar(account: account),
+                  : AccountAvatar(account: account),
               onSelected: (action) {
                 if (action == 'signOut') {
                   _music.signOut();
                 } else if (action == 'profile' && account != null) {
-                  _showProfile(account);
+                  _showProfile();
                 } else {
                   _showAccount(register: action == 'register');
                 }
@@ -360,7 +360,7 @@ class _AppShellState extends State<AppShell> {
                   showAboutDialog(
                     context: context,
                     applicationName: 'BCMusic',
-                    applicationVersion: '1.2.3',
+                    applicationVersion: '1.2.4',
                   );
                 }
               },
@@ -427,10 +427,7 @@ class _AppShellState extends State<AppShell> {
               if (_music.playback.trackId != null)
                 PlayerControls(
                   controller: _music,
-                  onDownload: (url) {
-                    _select(_library);
-                    _music.inspect(url);
-                  },
+                  onDownload: _downloadSong,
                   onAddToPlaylist: _addToPlaylist,
                 ),
               const Divider(height: 1),
@@ -470,43 +467,4 @@ class _AppShellState extends State<AppShell> {
       );
     },
   );
-}
-
-class _AccountAvatar extends StatelessWidget {
-  const _AccountAvatar({required this.account, this.size = 32});
-
-  final AccountProfile account;
-  final double size;
-
-  @override
-  Widget build(BuildContext context) {
-    final name = account.name.trim();
-    final fallback = CircleAvatar(
-      radius: size / 2,
-      backgroundColor: context.palette.raised,
-      foregroundColor: context.palette.text,
-      child: name.isEmpty
-          ? const Icon(Icons.person_outline_rounded, size: 18)
-          : Text(
-              name.characters.first.toUpperCase(),
-              maxLines: 1,
-              style: TextStyle(fontSize: size * .42),
-            ),
-    );
-    final uri = account.avatarUri;
-    if (uri == null) return fallback;
-    return ClipOval(
-      child: Image.network(
-        uri.toString(),
-        width: size,
-        height: size,
-        cacheWidth: (size * 3).round(),
-        fit: BoxFit.cover,
-        excludeFromSemantics: true,
-        frameBuilder: (_, child, frame, synchronous) =>
-            frame != null || synchronous ? child : fallback,
-        errorBuilder: (_, _, _) => fallback,
-      ),
-    );
-  }
 }

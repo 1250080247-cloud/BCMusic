@@ -1,7 +1,5 @@
 import 'dart:math' as math;
-import 'dart:ui' as ui;
 
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -9,6 +7,7 @@ import 'app_controller.dart';
 import 'app_theme.dart';
 import 'models.dart';
 import 'track_widgets.dart';
+import 'track_actions.dart';
 
 class PlayerControls extends StatelessWidget {
   const PlayerControls({
@@ -155,7 +154,13 @@ class _NowPlaying extends StatefulWidget {
 class _NowPlayingState extends State<_NowPlaying> {
   double? _drag, _volume;
   int _panel = 1;
-  bool _exportingMp4 = false;
+  final _scroll = ScrollController();
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
@@ -185,11 +190,6 @@ class _NowPlayingState extends State<_NowPlaying> {
       final artworkUrl = player.offline
           ? track?.artworkUrl
           : track?.artworkUrl ?? sourceItem?.artworkUrl;
-      final artworkSize = math.max(
-        MediaQuery.sizeOf(context).width,
-        MediaQuery.sizeOf(context).height,
-      );
-
       return AnnotatedRegion<SystemUiOverlayStyle>(
         value: SystemUiOverlayStyle.light.copyWith(
           systemNavigationBarColor: Colors.transparent,
@@ -199,49 +199,45 @@ class _NowPlayingState extends State<_NowPlaying> {
         child: Theme(
           data: bcmusicTheme(),
           child: Scaffold(
-            backgroundColor: Colors.black,
+            backgroundColor: const Color(0xff151720),
             body: Stack(
               children: [
                 Positioned.fill(
-                  child: ClipRect(
-                    child: ImageFiltered(
-                      imageFilter: ui.ImageFilter.blur(sigmaX: 28, sigmaY: 28),
-                      child: Center(
-                        child: TrackArtwork(
-                          path: track?.artworkPath,
-                          url: artworkUrl,
-                          size: artworkSize,
-                        ),
+                  child: AnimatedBuilder(
+                    animation: _scroll,
+                    builder: (context, child) => Transform.translate(
+                      offset: Offset(
+                        0,
+                        _scroll.hasClients ? -_scroll.offset : 0,
                       ),
+                      child: child,
                     ),
-                  ),
-                ),
-                Positioned.fill(
-                  child: LayoutBuilder(
-                    builder: (context, constraints) => Align(
-                      alignment: Alignment.topCenter,
-                      child: ShaderMask(
-                        blendMode: BlendMode.dstIn,
-                        shaderCallback: (bounds) => const LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [
-                            Colors.white,
-                            Colors.white,
-                            Colors.transparent,
-                          ],
-                          stops: [0, .72, 1],
-                        ).createShader(bounds),
-                        child: SizedBox(
-                          width: constraints.maxWidth,
-                          height: constraints.maxHeight * .57,
-                          child: ClipRect(
-                            child: FittedBox(
-                              fit: BoxFit.cover,
-                              child: TrackArtwork(
-                                path: track?.artworkPath,
-                                url: artworkUrl,
-                                size: constraints.maxWidth,
+                    child: LayoutBuilder(
+                      builder: (context, constraints) => Align(
+                        alignment: Alignment.topCenter,
+                        child: ShaderMask(
+                          blendMode: BlendMode.dstIn,
+                          shaderCallback: (bounds) => const LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [
+                              Colors.white,
+                              Colors.white,
+                              Colors.transparent,
+                            ],
+                            stops: [0, .72, 1],
+                          ).createShader(bounds),
+                          child: SizedBox(
+                            width: constraints.maxWidth,
+                            height: constraints.maxHeight * .57,
+                            child: ClipRect(
+                              child: FittedBox(
+                                fit: BoxFit.cover,
+                                child: TrackArtwork(
+                                  path: track?.artworkPath,
+                                  url: artworkUrl,
+                                  size: constraints.maxWidth,
+                                ),
                               ),
                             ),
                           ),
@@ -270,6 +266,7 @@ class _NowPlayingState extends State<_NowPlaying> {
                 SafeArea(
                   child: LayoutBuilder(
                     builder: (context, constraints) => SingleChildScrollView(
+                      controller: _scroll,
                       padding: const EdgeInsets.fromLTRB(24, 4, 24, 14),
                       child: ConstrainedBox(
                         constraints: BoxConstraints(
@@ -307,7 +304,6 @@ class _NowPlayingState extends State<_NowPlaying> {
                                     context,
                                     track,
                                     track?.sourceUrl ?? sourceItem?.url,
-                                    title,
                                   ),
                                   icon: const Icon(
                                     Icons.more_vert_rounded,
@@ -665,7 +661,6 @@ class _NowPlayingState extends State<_NowPlaying> {
     BuildContext context,
     OfflineTrack? track,
     String? url,
-    String title,
   ) async {
     final ready =
         widget.controller.tracks
@@ -691,13 +686,13 @@ class _NowPlayingState extends State<_NowPlaying> {
             ),
             ListTile(
               leading: const Icon(Icons.download_rounded),
-              title: const Text('Tải MP4 kèm ảnh bìa'),
+              title: const Text('Tải xuống'),
               subtitle: Text(
-                _exportingMp4
-                    ? 'Đang tạo tệp…'
-                    : 'Âm thanh và một ảnh đứng yên',
+                ready == null
+                    ? 'Lưu vào Thư viện BCMusic'
+                    : 'Đã có trong Thư viện',
               ),
-              onTap: _exportingMp4 || url == null
+              onTap: ready != null || url == null
                   ? null
                   : () => Navigator.pop(sheetContext, _PlayerAction.download),
             ),
@@ -744,64 +739,10 @@ class _NowPlayingState extends State<_NowPlaying> {
         widget.onDownload(url);
       case _PlayerAction.download:
         if (url == null) return;
-        final messenger = ScaffoldMessenger.of(context);
-        if (kIsWeb) {
-          messenger.showSnackBar(
-            const SnackBar(
-              content: Text('Tạo và lưu MP4 trên ứng dụng Android.'),
-            ),
-          );
-          return;
-        }
-        setState(() => _exportingMp4 = true);
-        try {
-          if (await widget.controller.exportCoverMp4(url, title) &&
-              messenger.mounted) {
-            messenger.showSnackBar(
-              const SnackBar(content: Text('Đã lưu MP4 kèm ảnh bìa.')),
-            );
-          }
-        } on PlatformException catch (error) {
-          if (messenger.mounted) {
-            messenger.showSnackBar(
-              SnackBar(
-                content: Text(error.message ?? 'Chưa tạo được tệp MP4.'),
-              ),
-            );
-          }
-        } on MissingPluginException {
-          if (messenger.mounted) {
-            messenger.showSnackBar(
-              const SnackBar(
-                content: Text('Bản Android này chưa hỗ trợ tạo MP4.'),
-              ),
-            );
-          }
-        } finally {
-          if (mounted) setState(() => _exportingMp4 = false);
-        }
+        Navigator.pop(context);
+        widget.onDownload(url);
       case _PlayerAction.share:
-        if (url == null) return;
-        if (!kIsWeb && await widget.controller.shareTrack(url)) return;
-        if (!context.mounted) return;
-        try {
-          await Clipboard.setData(ClipboardData(text: url));
-          if (context.mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Đã sao chép liên kết bài hát.')),
-            );
-          }
-        } on PlatformException {
-          if (context.mounted) {
-            await showDialog<void>(
-              context: context,
-              builder: (context) => AlertDialog(
-                title: const Text('Chia sẻ'),
-                content: SelectableText(url),
-              ),
-            );
-          }
-        }
+        if (url != null) await shareSong(context, widget.controller, url);
     }
   }
 

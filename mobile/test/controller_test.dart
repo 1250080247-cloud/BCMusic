@@ -80,6 +80,48 @@ class FakeMusicPlatform implements MusicPlatform {
 }
 
 void main() {
+  test('queued song advances after the current source ends', () async {
+    final platform = FakeMusicPlatform();
+    final controller = MusicController(platform);
+    await controller.initialize();
+    const first = 'https://www.youtube.com/watch?v=jNQXAC9IVRw';
+    expect(
+      controller.enqueueSong(
+        const PlaybackQueueItem(
+          url: 'https://www.youtube.com/watch?v=M7lc1UVf-VE',
+          title: 'Bài tiếp theo',
+          artist: 'BCMusic',
+        ),
+      ),
+      isTrue,
+    );
+    expect(platform.playedSources, isEmpty);
+    await controller.playSource(first);
+    expect(controller.canSkip(1), isTrue);
+    platform.updates.add(
+      const LibrarySnapshot(
+        playback: PlaybackState(trackId: 'first', ended: true, offline: false),
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+    expect(platform.playedSources, [first, sample.sourceUrl]);
+    controller.dispose();
+    await platform.updates.close();
+  });
+
+  test('download action resolves and enqueues the selected track', () async {
+    final platform = FakeMusicPlatform();
+    final controller = MusicController(platform);
+    await controller.initialize();
+    final operation = controller.downloadSource(sample.sourceUrl);
+    platform.pending[sample.sourceUrl]!.complete(sample);
+    await operation;
+    expect(platform.enqueued, [sample.id]);
+    expect(controller.preview, isNull);
+    controller.dispose();
+    await platform.updates.close();
+  });
+
   test(
     'online playback skips within its list, then uses native offline controls',
     () async {

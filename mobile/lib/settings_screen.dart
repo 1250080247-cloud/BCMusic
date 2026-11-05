@@ -116,7 +116,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ),
             const SizedBox(height: 24),
-            const Center(child: Text('BCMusic · Phiên bản 1.2.3')),
+            const Center(child: Text('BCMusic · Phiên bản 1.2.4')),
             if (widget.controller.error case final error?)
               Text(
                 error,

@@ -42,6 +42,30 @@ class AndroidMusicPlatform implements MusicPlatform {
       }) ??
       false;
 
+  Future<String?> getProfileCollections() =>
+      _methods.invokeMethod<String>('getProfileCollections');
+  Future<void> saveWebPlaylistSong(
+    Map<String, String> song, {
+    String? playlistId,
+    String? playlistName,
+  }) => _methods.invokeMethod('saveWebPlaylistSong', {
+    'song': song,
+    'playlistId': playlistId,
+    'playlistName': playlistName,
+  });
+  Future<void> removeWebPlaylistSong(String playlistId, String songId) =>
+      _methods.invokeMethod('removeWebPlaylistSong', {
+        'playlistId': playlistId,
+        'songId': songId,
+      });
+  Future<String?> pickProfileImage() =>
+      _methods.invokeMethod<String>('pickProfileImage');
+  Future<void> updateProfile(String displayName, {String? image}) =>
+      _methods.invokeMethod('updateProfile', {
+        'displayName': displayName,
+        'image': image,
+      });
+
   Future<void> shareTrack(String url) =>
       _methods.invokeMethod('shareTrack', {'url': url});
 

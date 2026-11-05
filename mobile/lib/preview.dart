@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/widgets.dart';
 
@@ -99,6 +100,8 @@ class _PreviewPlatform extends AndroidMusicPlatform {
 
   final _downloads = <String, OfflineTrack>{};
   final _playlists = <String, LocalPlaylist>{};
+  final _webPlaylists =
+      <String, ({String name, Map<String, Map<String, String>> songs})>{};
   int _playlistSequence = 0;
 
   AccountProfile? _account = const AccountProfile(
@@ -113,6 +116,17 @@ class _PreviewPlatform extends AndroidMusicPlatform {
     preferences: _preferences,
     playback: PlaybackState(
       trackId: _song?.id,
+      track: _song == null
+          ? null
+          : OfflineTrack(
+              id: _song!.id,
+              title: _song!.title,
+              artist: _song!.artist,
+              sourceUrl: _song!.sourceUrl,
+              provider: 'youtube',
+              status: 'streaming',
+              artworkUrl: _song!.thumbnail,
+            ),
       isPlaying: _playing,
       positionMs: _position,
       durationMs: 282000,
@@ -127,6 +141,7 @@ class _PreviewPlatform extends AndroidMusicPlatform {
   @override
   Future<void> playSource(String url) async {
     _song = _songs.firstWhere((song) => song.sourceUrl == url);
+    _playing = true;
     _position = 38000;
     _updates.add(_state);
   }
@@ -170,6 +185,70 @@ class _PreviewPlatform extends AndroidMusicPlatform {
       id: playlist.id,
       name: playlist.name,
       trackIds: {...playlist.trackIds, id}.toList(),
+    );
+    _updates.add(_state);
+  }
+
+  @override
+  Future<String?> getProfileCollections() async => jsonEncode({
+    'favorites': [
+      for (final song in _songs.take(2))
+        {
+          'id': song.id,
+          'title': song.title,
+          'artist': song.artist,
+          'sourceUrl': song.sourceUrl,
+          'thumbnail': song.thumbnail,
+        },
+    ],
+    'playlists': [
+      for (final entry in _webPlaylists.entries)
+        {
+          'id': entry.key,
+          'name': entry.value.name,
+          'songs': entry.value.songs.values.toList(),
+        },
+    ],
+  });
+
+  @override
+  Future<void> saveWebPlaylistSong(
+    Map<String, String> song, {
+    String? playlistId,
+    String? playlistName,
+  }) async {
+    final id = playlistId ?? '${++_playlistSequence}';
+    final playlist = _webPlaylists.putIfAbsent(
+      id,
+      () => (name: playlistName!, songs: <String, Map<String, String>>{}),
+    );
+    playlist.songs[song['id']!] = song;
+  }
+
+  @override
+  Future<void> removeWebPlaylistSong(String playlistId, String songId) async {
+    _webPlaylists[playlistId]?.songs.remove(songId);
+  }
+
+  @override
+  Future<void> updateProfile(String displayName, {String? image}) async {
+    final account = _account;
+    if (account == null) return;
+    _account = AccountProfile(name: displayName, username: account.username);
+    _updates.add(_state);
+  }
+
+  @override
+  Future<void> play(String id, {List<String>? queueIds}) =>
+      playSource(_songs.firstWhere((song) => song.id == id).sourceUrl);
+
+  @override
+  Future<void> removeFromPlaylist(String playlistId, String id) async {
+    final playlist = _playlists[playlistId]!;
+    _playlists[playlistId] = LocalPlaylist(
+      id: playlist.id,
+      name: playlist.name,
+      trackIds: playlist.trackIds.where((trackId) => trackId != id).toList(),
     );
     _updates.add(_state);
   }

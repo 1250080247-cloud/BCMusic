@@ -1,10 +1,15 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'app_controller.dart';
 import 'app_theme.dart';
 import 'discovery_screen.dart';
 import 'models.dart';
+import 'platform_bridge.dart';
 import 'track_widgets.dart';
+import 'track_actions.dart';
 
 Future<void> createLocalPlaylist(
   BuildContext context,
@@ -54,6 +59,101 @@ class _PlaylistNameDialogState extends State<_PlaylistNameDialog> {
       ),
     ],
   );
+}
+
+Future<void> pickLocalPlaylist(
+  BuildContext context,
+  MusicController controller,
+  OfflineTrack track,
+) async {
+  final playlists = controller.snapshot.playlists;
+  if (playlists.isEmpty) {
+    await createLocalPlaylist(context, controller, initialTrack: track);
+    return;
+  }
+  final id = await showDialog<String>(
+    context: context,
+    builder: (context) => SimpleDialog(
+      title: const Text('Thêm vào danh sách phát'),
+      children: [
+        for (final playlist in playlists)
+          ListTile(
+            enabled: !playlist.trackIds.contains(track.id),
+            title: Text(playlist.name),
+            subtitle: playlist.trackIds.contains(track.id)
+                ? const Text('Đã thêm')
+                : null,
+            onTap: playlist.trackIds.contains(track.id)
+                ? null
+                : () => Navigator.pop(context, playlist.id),
+          ),
+      ],
+    ),
+  );
+  if (id != null && context.mounted) await controller.addToPlaylist(id, track);
+}
+
+Future<void> pickWebPlaylist(
+  BuildContext context,
+  AndroidMusicPlatform platform,
+  String songId,
+  PlaybackQueueItem song,
+) async {
+  try {
+    final raw = await platform.getProfileCollections();
+    final playlists = raw == null
+        ? <Map>[]
+        : (jsonDecode(raw)['playlists'] as List? ?? []).whereType<Map>();
+    if (!context.mounted) return;
+    final selected = await showDialog<String>(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: const Text('Thêm vào playlist tài khoản'),
+        children: [
+          for (final playlist in playlists)
+            if (playlist['id'] case final String id)
+              SimpleDialogOption(
+                onPressed: () => Navigator.pop(context, id),
+                child: Text(playlist['name']?.toString() ?? 'Playlist'),
+              ),
+          SimpleDialogOption(
+            onPressed: () => Navigator.pop(context, ''),
+            child: const Text('Tạo playlist mới'),
+          ),
+        ],
+      ),
+    );
+    if (!context.mounted || selected == null) return;
+    final name = selected.isEmpty
+        ? await showDialog<String>(
+            context: context,
+            builder: (_) => const _PlaylistNameDialog(),
+          )
+        : null;
+    if (!context.mounted || (selected.isEmpty && name == null)) return;
+    await platform.saveWebPlaylistSong(
+      {
+        'id': songId,
+        'title': song.title,
+        'artist': song.artist,
+        'sourceUrl': song.url,
+        'thumbnail': ?song.artworkUrl,
+      },
+      playlistId: selected.isEmpty ? null : selected,
+      playlistName: name,
+    );
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Bài hát đã có trong playlist.')),
+      );
+    }
+  } on PlatformException catch (error) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.message ?? 'Chưa mở được playlist.')),
+      );
+    }
+  }
 }
 
 class PlaylistScreen extends StatelessWidget {
@@ -117,7 +217,7 @@ class PlaylistScreen extends StatelessWidget {
                               onTap: () => Navigator.push<void>(
                                 context,
                                 MaterialPageRoute(
-                                  builder: (_) => _PlaylistDetail(
+                                  builder: (_) => PlaylistDetail(
                                     controller: controller,
                                     playlistId: playlist.id,
                                   ),
@@ -171,8 +271,12 @@ class PlaylistScreen extends StatelessWidget {
   }
 }
 
-class _PlaylistDetail extends StatelessWidget {
-  const _PlaylistDetail({required this.controller, required this.playlistId});
+class PlaylistDetail extends StatelessWidget {
+  const PlaylistDetail({
+    super.key,
+    required this.controller,
+    required this.playlistId,
+  });
   final MusicController controller;
   final String playlistId;
 
@@ -326,11 +430,34 @@ class _PlaylistDetail extends StatelessWidget {
                   ),
                   selected: controller.playback.trackId == track.id,
                   onTap: () => controller.play(track, queueIds: queue),
-                  trailing: IconButton(
-                    tooltip: 'Gỡ ${track.title} khỏi playlist',
-                    onPressed: () =>
-                        controller.removeFromPlaylist(playlistId, track),
-                    icon: const Icon(Icons.remove_circle_outline_rounded),
+                  trailing: TrackMenu(
+                    title: track.title,
+                    inPlaylist: true,
+                    onSelected: (action) {
+                      final item = PlaybackQueueItem(
+                        url: track.sourceUrl,
+                        title: track.title,
+                        artist: track.artist,
+                        artworkUrl: track.artworkUrl,
+                      );
+                      switch (action) {
+                        case TrackAction.share:
+                          shareSong(context, controller, item.url);
+                        case TrackAction.playlist:
+                          pickLocalPlaylist(context, controller, track);
+                        case TrackAction.remove:
+                          controller.removeFromPlaylist(playlistId, track);
+                        case TrackAction.queue:
+                          enqueueSong(context, controller, item);
+                        case TrackAction.info:
+                          showTrackInfo(
+                            context,
+                            item,
+                            durationMs: track.durationMs,
+                            artworkPath: track.artworkPath,
+                          );
+                      }
+                    },
                   ),
                 ),
             ],
