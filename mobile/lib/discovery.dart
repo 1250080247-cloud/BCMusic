@@ -90,7 +90,12 @@ abstract class DiscoveryRepository {
   void dispose();
 }
 
-class WebsiteDiscoveryRepository implements DiscoveryRepository {
+abstract interface class SearchSuggestions {
+  Future<List<String>> suggestions(String query);
+}
+
+class WebsiteDiscoveryRepository
+    implements DiscoveryRepository, SearchSuggestions {
   final _client = HttpClient()..connectionTimeout = const Duration(seconds: 15);
   final _cache = <String, (DateTime, List<DiscoverySong>)>{};
   final _pending = <String, Future<List<DiscoverySong>>>{};
@@ -101,6 +106,24 @@ class WebsiteDiscoveryRepository implements DiscoveryRepository {
   @override
   Future<List<DiscoverySong>> search(String query) =>
       _cached('search', {'q': query, 'maxResults': '20'});
+
+  @override
+  Future<List<String>> suggestions(String query) async {
+    final data = await _request(
+      Uri.https('bc-music-gilt.vercel.app', '/api/search/suggestions', {
+        'q': query,
+        'language': 'vi',
+      }),
+    ).timeout(const Duration(seconds: 5));
+    final rows = data['suggestions'];
+    return rows is List
+        ? rows
+              .whereType<String>()
+              .where((text) => text.trim().isNotEmpty && text.length <= 200)
+              .take(6)
+              .toList()
+        : [];
+  }
 
   Future<List<DiscoverySong>> _cached(
     String endpoint,
@@ -118,7 +141,7 @@ class WebsiteDiscoveryRepository implements DiscoveryRepository {
       return cached.$2;
     }
     if (_pending[key] case final request?) return request;
-    final future = _request(uri);
+    final future = _request(uri).then(DiscoverySong.parseItems);
     _pending[key] = future;
     try {
       final songs = await future;
@@ -130,7 +153,7 @@ class WebsiteDiscoveryRepository implements DiscoveryRepository {
     }
   }
 
-  Future<List<DiscoverySong>> _request(Uri uri) async {
+  Future<Map<String, dynamic>> _request(Uri uri) async {
     HttpClientRequest? request;
     try {
       request = await _client.getUrl(uri).timeout(const Duration(seconds: 15));
@@ -155,7 +178,7 @@ class WebsiteDiscoveryRepository implements DiscoveryRepository {
       }
       final json = jsonDecode(utf8.decode(bytes));
       if (json is! Map<String, dynamic>) throw const FormatException();
-      return DiscoverySong.parseItems(json);
+      return json;
     } on DiscoveryFailure {
       rethrow;
     } on SocketException {

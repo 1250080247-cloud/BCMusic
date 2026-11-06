@@ -12,7 +12,7 @@ data class AppPreferences(
     fun toMap(): Map<String, Any> = mapOf("light" to light, "volume" to volume, "speed" to speed.toDouble(), "motion" to motion)
 
     companion object {
-        val speeds = setOf(.75f, 1f, 1.25f, 1.5f)
+        val speeds = setOf(.75f, 1f, 1.25f, 1.5f, 2f)
 
         fun fromMap(values: Map<*, *>, defaults: AppPreferences = AppPreferences()): AppPreferences {
             val rate = (values["speed"] as? Number)?.toDouble()

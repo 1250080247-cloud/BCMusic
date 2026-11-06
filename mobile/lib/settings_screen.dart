@@ -80,7 +80,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       children: [
                         for (final speed in AppPreferences.speeds)
                           ChoiceChip(
-                            label: Text(speed == 1 ? '1×' : '$speed×'),
+                            label: Text(playbackSpeedLabel(speed)),
                             selected: settings.speed == speed,
                             onSelected: (_) => widget.controller
                                 .updatePreferences({'speed': speed}),
@@ -116,7 +116,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ),
             const SizedBox(height: 24),
-            const Center(child: Text('BCMusic · Phiên bản 1.2.4')),
+            const Center(child: Text('BCMusic · Phiên bản 1.2.5')),
             if (widget.controller.error case final error?)
               Text(
                 error,

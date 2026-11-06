@@ -20,4 +20,10 @@ class AppPreferencesTest {
         assertEquals(AppPreferences(light = true, volume = 64, speed = 1.25f, motion = false),
             PreferenceStore(context).current)
     }
+
+    @Test fun doubleSpeedPersistsAcrossRestarts() {
+        val context = RuntimeEnvironment.getApplication()
+        PreferenceStore(context).update(mapOf("speed" to 2.0))
+        assertEquals(2f, PreferenceStore(context).current.speed)
+    }
 }

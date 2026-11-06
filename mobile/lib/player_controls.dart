@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -154,12 +155,10 @@ class _NowPlaying extends StatefulWidget {
 class _NowPlayingState extends State<_NowPlaying> {
   double? _drag, _volume;
   int _panel = 1;
-  final _scroll = ScrollController();
-
   @override
-  void dispose() {
-    _scroll.dispose();
-    super.dispose();
+  void initState() {
+    super.initState();
+    unawaited(widget.controller.refreshFavorites());
   }
 
   @override
@@ -202,50 +201,6 @@ class _NowPlayingState extends State<_NowPlaying> {
             backgroundColor: const Color(0xff151720),
             body: Stack(
               children: [
-                Positioned.fill(
-                  child: AnimatedBuilder(
-                    animation: _scroll,
-                    builder: (context, child) => Transform.translate(
-                      offset: Offset(
-                        0,
-                        _scroll.hasClients ? -_scroll.offset : 0,
-                      ),
-                      child: child,
-                    ),
-                    child: LayoutBuilder(
-                      builder: (context, constraints) => Align(
-                        alignment: Alignment.topCenter,
-                        child: ShaderMask(
-                          blendMode: BlendMode.dstIn,
-                          shaderCallback: (bounds) => const LinearGradient(
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                            colors: [
-                              Colors.white,
-                              Colors.white,
-                              Colors.transparent,
-                            ],
-                            stops: [0, .72, 1],
-                          ).createShader(bounds),
-                          child: SizedBox(
-                            width: constraints.maxWidth,
-                            height: constraints.maxHeight * .57,
-                            child: ClipRect(
-                              child: FittedBox(
-                                fit: BoxFit.cover,
-                                child: TrackArtwork(
-                                  path: track?.artworkPath,
-                                  url: artworkUrl,
-                                  size: constraints.maxWidth,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
                 const Positioned.fill(
                   child: DecoratedBox(
                     decoration: BoxDecoration(
@@ -266,7 +221,6 @@ class _NowPlayingState extends State<_NowPlaying> {
                 SafeArea(
                   child: LayoutBuilder(
                     builder: (context, constraints) => SingleChildScrollView(
-                      controller: _scroll,
                       padding: const EdgeInsets.fromLTRB(24, 4, 24, 14),
                       child: ConstrainedBox(
                         constraints: BoxConstraints(
@@ -312,12 +266,20 @@ class _NowPlayingState extends State<_NowPlaying> {
                                 ),
                               ],
                             ),
-                            SizedBox(
-                              height: math.max(
-                                72,
-                                constraints.maxHeight * .49 - 52,
+                            Center(
+                              child: TrackArtwork(
+                                path: track?.artworkPath,
+                                url: artworkUrl,
+                                size: math.min(
+                                  288,
+                                  math.min(
+                                    constraints.maxWidth * .66,
+                                    constraints.maxHeight * .34,
+                                  ),
+                                ),
                               ),
                             ),
+                            const SizedBox(height: 18),
                             Row(
                               children: [
                                 Expanded(
@@ -354,17 +316,28 @@ class _NowPlayingState extends State<_NowPlaying> {
                                 ),
                                 const SizedBox(width: 8),
                                 IconButton(
-                                  tooltip: controller.isLiked(player.trackId)
+                                  tooltip: controller.isLiked(track)
                                       ? 'Bỏ thích'
                                       : 'Thích',
-                                  isSelected: controller.isLiked(
-                                    player.trackId,
-                                  ),
-                                  onPressed: player.trackId == null
+                                  isSelected: controller.isLiked(track),
+                                  onPressed:
+                                      track == null || controller.savingFavorite
                                       ? null
-                                      : () => controller.toggleLiked(
-                                          player.trackId!,
-                                        ),
+                                      : () async {
+                                          if (!await controller.toggleLiked(
+                                                track,
+                                              ) &&
+                                              context.mounted) {
+                                            ScaffoldMessenger.of(context)
+                                                .showSnackBar(
+                                                  const SnackBar(
+                                                    content: Text(
+                                                      'Chưa cập nhật được bài yêu thích. Hãy thử lại.',
+                                                    ),
+                                                  ),
+                                                );
+                                          }
+                                        },
                                   icon: const Icon(
                                     Icons.favorite_border_rounded,
                                   ),
@@ -439,6 +412,43 @@ class _NowPlayingState extends State<_NowPlaying> {
                             Stack(
                               alignment: Alignment.center,
                               children: [
+                                Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: PopupMenuButton<double>(
+                                    tooltip: 'Tốc độ phát',
+                                    initialValue: preferences.speed,
+                                    onSelected: (speed) => controller
+                                        .updatePreferences({'speed': speed}),
+                                    itemBuilder: (_) => [
+                                      for (final speed in AppPreferences.speeds)
+                                        PopupMenuItem(
+                                          value: speed,
+                                          child: Text(
+                                            playbackSpeedLabel(speed),
+                                          ),
+                                        ),
+                                    ],
+                                    child: SizedBox(
+                                      width: 48,
+                                      height: 48,
+                                      child: Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 3,
+                                        ),
+                                        child: Center(
+                                          child: FittedBox(
+                                            fit: BoxFit.scaleDown,
+                                            child: Text(
+                                              playbackSpeedLabel(
+                                                preferences.speed,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
                                 Align(
                                   alignment: Alignment.center,
                                   child: Row(

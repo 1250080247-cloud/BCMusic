@@ -12,7 +12,7 @@
         android:allowBackup="false"
         android:usesCleartextTraffic="false"
         android:name="${applicationName}"
-        android:icon="@drawable/ic_launcher_bcmusic">
+        android:icon="@drawable/bcmusic_logo">
         <activity
             android:name=".MainActivity"
             android:exported="true"

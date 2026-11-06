@@ -24,8 +24,11 @@ import io.flutter.plugin.common.MethodChannel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
@@ -43,6 +46,9 @@ class MainActivity : FlutterActivity(), EventChannel.StreamHandler {
     private var exportDestination: CancellableContinuation<Uri?>? = null
     private var exportingMp4 = false
     private var profileImage: CancellableContinuation<Uri?>? = null
+    private var spectrumSink: EventChannel.EventSink? = null
+    private var spectrumJob: Job? = null
+    private var foreground = false
 
     private suspend fun chooseMp4Destination(title: String): Uri? =
         suspendCancellableCoroutine { continuation ->
@@ -121,6 +127,43 @@ class MainActivity : FlutterActivity(), EventChannel.StreamHandler {
             .setMethodCallHandler(::onMethod)
         EventChannel(flutterEngine.dartExecutor.binaryMessenger, "app.bcmusic.personal/events")
             .setStreamHandler(this)
+        EventChannel(flutterEngine.dartExecutor.binaryMessenger, "app.bcmusic.personal/spectrum")
+            .setStreamHandler(object : EventChannel.StreamHandler {
+                override fun onListen(arguments: Any?, events: EventChannel.EventSink) {
+                    spectrumSink = events
+                    syncSpectrum()
+                }
+                override fun onCancel(arguments: Any?) {
+                    spectrumSink = null
+                    syncSpectrum()
+                }
+            })
+    }
+
+    override fun onStart() {
+        super.onStart()
+        foreground = true
+        syncSpectrum()
+    }
+
+    override fun onStop() {
+        foreground = false
+        syncSpectrum()
+        super.onStop()
+    }
+
+    private fun syncSpectrum() {
+        spectrumJob?.cancel()
+        val events = spectrumSink?.takeIf { foreground }
+        library.spectrum.enabled = events != null
+        if (events == null) return
+        spectrumJob = scope.launch {
+            while (isActive) {
+                val levels = if (library.player?.isPlaying == true) library.spectrum.levels else listOf(0.0, 0.0, 0.0)
+                events.success(levels)
+                delay(80)
+            }
+        }
     }
 
     override fun onCreate(savedInstanceState: android.os.Bundle?) {
@@ -184,6 +227,11 @@ class MainActivity : FlutterActivity(), EventChannel.StreamHandler {
                     "getState" -> {
                         withTimeout(15_000) { library.awaitReady() }
                         result.success(library.snapshot())
+                    }
+                    "recordSearch" -> {
+                        library.recent.searched(call.argument<String>("query").orEmpty())
+                        library.emit()
+                        result.success(null)
                     }
                     "resolve" -> {
                         val input = call.argument<String>("url") ?: throw SourceFailure("INVALID_URL", "Thiếu link bài hát.")
@@ -291,6 +339,16 @@ class MainActivity : FlutterActivity(), EventChannel.StreamHandler {
                     }
                     "getProfileCollections" -> {
                         result.success(withContext(Dispatchers.IO) { library.account.profileCollections() })
+                    }
+                    "getFavoriteIds" -> result.success(withContext(Dispatchers.IO) { library.account.favoriteIds() })
+                    "setFavorite" -> {
+                        val accountId = call.argument<String>("accountId").orEmpty()
+                        val song = call.argument<Map<String, String>>("song").orEmpty()
+                        val liked = call.argument<Boolean>("liked") == true
+                        withContext(Dispatchers.IO) {
+                            library.account.setFavorite(accountId, org.json.JSONObject(song), liked)
+                        }
+                        result.success(null)
                     }
                     "saveWebPlaylistSong" -> {
                         val playlistId = call.argument<String>("playlistId")

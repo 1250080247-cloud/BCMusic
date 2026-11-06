@@ -79,6 +79,12 @@ class MusicController extends ChangeNotifier {
   int _request = 0, _shareSequence = 0;
   final Set<String> _pending = {};
   List<OfflineTrack> get tracks => snapshot.tracks;
+  void recordSearch(String query) {
+    if (platform case final AndroidMusicPlatform android) {
+      unawaited(_perform(() => android.recordSearch(query)));
+    }
+  }
+
   PlaybackState get playback => snapshot.playback;
   bool isPending(String id) => _pending.contains(id);
 
@@ -112,6 +118,14 @@ class MusicController extends ChangeNotifier {
   void _accept(LibrarySnapshot next) {
     if (_disposed) return;
     snapshot = next;
+    final account = next.account;
+    final key = account?.id ?? account?.username;
+    if (key != _favoriteAccount) {
+      _favoriteAccount = key;
+      _favoriteSession++;
+      _favoriteLoad = null;
+      _favoriteIds = null;
+    }
     if (!next.playback.ended) _handledEnd = null;
     if (!openingSource && next.playback.track != null) {
       if (_sourceQueue case (final urls, final index)) {
@@ -310,11 +324,106 @@ class MusicController extends ChangeNotifier {
     await _perform(() => platform.removeFromPlaylist(playlistId, track.id));
   }
 
-  final _liked = <String>{};
-  bool isLiked(String? id) => _liked.contains(id);
-  void toggleLiked(String id) {
-    if (!_liked.add(id)) _liked.remove(id);
+  final _guestLikes = <String>{};
+  String? _favoriteAccount;
+  int _favoriteSession = 0;
+  Set<String>? _favoriteIds;
+  Future<void>? _favoriteLoad;
+  bool savingFavorite = false;
+
+  String? _favoriteId(OfflineTrack track) {
+    if (track.provider == 'youtube') {
+      return Uri.tryParse(track.sourceUrl)?.queryParameters['v'];
+    }
+    final match = RegExp(r'^soundcloud_(\d+)$').firstMatch(track.id);
+    return match == null ? null : 'sc_${match[1]}';
+  }
+
+  bool isLiked(OfflineTrack? track) =>
+      track != null &&
+      (_favoriteAccount == null
+          ? _guestLikes.contains(track.id)
+          : _favoriteIds?.contains(_favoriteId(track)) == true);
+
+  Future<void> refreshFavorites() async {
+    final android = platform;
+    final account = _favoriteAccount;
+    if (android is! AndroidMusicPlatform || account == null || savingFavorite) {
+      return;
+    }
+    if (_favoriteLoad case final pending?) return pending;
+    final request = _loadFavorites(android, _favoriteSession);
+    _favoriteLoad = request;
+    try {
+      await request;
+    } finally {
+      if (identical(_favoriteLoad, request)) _favoriteLoad = null;
+    }
+  }
+
+  Future<void> _loadFavorites(AndroidMusicPlatform android, int session) async {
+    try {
+      final ids = await android.getFavoriteIds();
+      if (!_disposed && _favoriteSession == session) {
+        _favoriteIds = ids.toSet();
+        _notify();
+      }
+    } on Exception {
+      // The player stays available if favorites cannot be refreshed.
+    }
+  }
+
+  Future<bool> toggleLiked(OfflineTrack track) async {
+    final account = _favoriteAccount;
+    final session = _favoriteSession;
+    final android = platform;
+    if (account == null) {
+      if (!_guestLikes.add(track.id)) _guestLikes.remove(track.id);
+      _notify();
+      return true;
+    }
+    final id = _favoriteId(track);
+    if (android is! AndroidMusicPlatform || id == null || savingFavorite) {
+      return false;
+    }
+    if (_favoriteIds == null || _favoriteLoad != null) await refreshFavorites();
+    final favorites = _favoriteIds;
+    if (favorites == null ||
+        session != _favoriteSession ||
+        savingFavorite ||
+        _disposed) {
+      return false;
+    }
+    savingFavorite = true;
     _notify();
+    final liked = !favorites.contains(id);
+    final thumbnail =
+        track.artworkUrl ??
+        (track.provider == 'youtube'
+            ? 'https://i.ytimg.com/vi/$id/hqdefault.jpg'
+            : null);
+    try {
+      await android.setFavorite(account, {
+        'id': id,
+        'sourceUrl': track.sourceUrl,
+        'title': track.title,
+        'artist': track.artist,
+        'thumbnail': ?thumbnail,
+      }, liked);
+      if (session == _favoriteSession) {
+        if (liked) {
+          favorites.add(id);
+        } else {
+          favorites.remove(id);
+        }
+      }
+      return true;
+    } on Exception {
+      return false;
+    } finally {
+      savingFavorite = false;
+      _notify();
+    }
   }
 
   bool repeatOne = false;
