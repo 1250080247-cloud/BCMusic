@@ -39,6 +39,7 @@ async function authFixture(user) {
     'next-auth/providers/google': { default: options => ({ id: 'google', ...options }) },
     bcryptjs: { default: bcrypt },
     '@/lib/mongodb': { default: async () => {} },
+    '@/lib/rate-limit': { consumeRateLimit: async () => true, clientKey: () => 'test-client' },
     '@/models/User': { default: { findOne: query => {
       queries.push(query);
       return Promise.resolve(user);

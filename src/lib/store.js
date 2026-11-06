@@ -29,6 +29,22 @@ export const useMusicStore = create((set, get) => ({
     const next = current === 'off' ? 'all' : current === 'all' ? 'one' : 'off';
     set({ repeatMode: next });
   },
+
+  // Shuffle: when on, Next picks a random track from the current list that has not played yet.
+  shuffle: false,
+  toggleShuffle: () => set((state) => ({ shuffle: !state.shuffle })),
+
+  // Manual queue: Next plays these tracks before the current list continues.
+  queue: [],
+  enqueueSong: (song) => set((state) => ({ queue: [...state.queue.filter((s) => s.id !== song.id), song] })),
+  playNextSong: (song) => set((state) => ({ queue: [song, ...state.queue.filter((s) => s.id !== song.id)] })),
+  shiftQueue: () => {
+    const [next, ...rest] = get().queue;
+    if (!next) return null;
+    set({ queue: rest });
+    return next;
+  },
+  clearQueue: () => set({ queue: [] }),
 }));
 
 export const useSettingsStore = create(

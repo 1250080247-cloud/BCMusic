@@ -1,6 +1,7 @@
 import { getRequestUserId } from '@/lib/request-user';
 import { isAllowedAvatar } from '@/lib/avatar';
 import dbConnect from '@/lib/mongodb';
+import { readJsonBody } from '@/lib/input';
 import User from '@/models/User';
 import { NextResponse } from 'next/server';
 
@@ -10,7 +11,10 @@ export async function POST(request) {
     if (!userId) {
       return NextResponse.json({ success: false, message: 'Chưa đăng nhập.' }, { status: 401 });
     }
-    const body = await request.json();
+    const body = await readJsonBody(request);
+    if (body === undefined) {
+      return NextResponse.json({ success: false, message: 'Unsupported content type.' }, { status: 415 });
+    }
     const { displayName, image } = body || {};
     const updateData = {};
     if (displayName !== undefined) {
@@ -21,7 +25,7 @@ export async function POST(request) {
     }
     if (image !== undefined) {
       if (typeof image !== 'string' || !isAllowedAvatar(image.trim())) {
-        return NextResponse.json({ success: false, message: 'Ảnh phải là PNG, JPEG, GIF, WebP tối đa 2MB hoặc URL HTTPS bên ngoài.' }, { status: 400 });
+        return NextResponse.json({ success: false, message: 'Ảnh phải là PNG, JPEG, GIF, WebP tối đa 2MB hoặc ảnh từ Google.' }, { status: 400 });
       }
       updateData.image = image.trim();
     }

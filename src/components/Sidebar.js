@@ -1,6 +1,6 @@
 "use client";
 
-import { Home, Library, Search, CloudDownload, ListMusic } from 'lucide-react';
+import { Home, Library, Search, CloudDownload, ListMusic, Sparkles } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -10,6 +10,7 @@ import AuthModal from '@/components/AuthModal';
 
 const sidebarItems = [
   { key: 'home', href: '/', icon: Home },
+  { key: 'forYou', href: '/for-you', icon: Sparkles },
   { key: 'search', href: '/search', icon: Search },
   { key: 'library', href: '/history', icon: Library },
   { key: 'playlist', href: '/playlist', icon: ListMusic },

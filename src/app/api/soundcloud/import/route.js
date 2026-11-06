@@ -1,8 +1,15 @@
 import { getRequestUserId } from '@/lib/request-user';
 import dbConnect from '@/lib/mongodb';
 import { resolveSoundCloudUrl } from '@/lib/soundcloud';
+import { readJsonBody } from '@/lib/input';
+import { safeSourceUrl } from '@/lib/url-policy';
 import SoundCloudTrack from '@/models/SoundCloudTrack';
 import { NextResponse } from 'next/server';
+
+const isSoundCloudPage = (value) => {
+  const safe = safeSourceUrl(value);
+  return Boolean(safe) && /(^|\.)soundcloud\.com$/.test(new URL(safe).hostname);
+};
 
 /**
  * POST /api/soundcloud/import
@@ -16,7 +23,10 @@ export async function POST(request) {
     if (!userId) {
       return NextResponse.json({ success: false, message: 'Chưa đăng nhập.' }, { status: 401 });
     }
-    const body = await request.json();
+    const body = await readJsonBody(request);
+    if (body === undefined) {
+      return NextResponse.json({ success: false, message: 'Unsupported content type.' }, { status: 415 });
+    }
 
     if (typeof body?.url !== 'string' || !body.url.trim()) {
       return NextResponse.json(
@@ -27,8 +37,8 @@ export async function POST(request) {
 
     const scUrl = body.url.trim();
 
-    // Validate that it looks like a SoundCloud URL
-    if (!scUrl.includes('soundcloud.com/')) {
+    // Only https SoundCloud pages reach oEmbed; the URL is also used as the saved source link.
+    if (!isSoundCloudPage(scUrl)) {
       return NextResponse.json(
         { success: false, message: 'invalid_url' },
         { status: 400 }
@@ -53,17 +63,25 @@ export async function POST(request) {
       );
     }
 
-    // Save to MongoDB
-    const newTrack = await SoundCloudTrack.create({
-      scId: trackData.id,
-      scTrackId: trackData.scTrackId,
-      title: trackData.title,
-      artist: trackData.artist,
-      thumbnail: trackData.thumbnail,
-      sourceUrl: scUrl,
-      embedUrl: trackData.embedUrl,
-      userId,
-    });
+    // Save to MongoDB. A concurrent import of the same track fails on the unique index.
+    let newTrack;
+    try {
+      newTrack = await SoundCloudTrack.create({
+        scId: trackData.id,
+        scTrackId: trackData.scTrackId,
+        title: trackData.title,
+        artist: trackData.artist,
+        thumbnail: trackData.thumbnail,
+        sourceUrl: scUrl,
+        embedUrl: trackData.embedUrl,
+        userId,
+      });
+    } catch (error) {
+      if (error.code === 11000) {
+        return NextResponse.json({ success: false, message: 'already_imported' }, { status: 409 });
+      }
+      throw error;
+    }
 
     return NextResponse.json({
       success: true,
@@ -141,7 +159,10 @@ export async function DELETE(request) {
     if (!userId) {
       return NextResponse.json({ success: false, message: 'Chưa đăng nhập.' }, { status: 401 });
     }
-    const body = await request.json();
+    const body = await readJsonBody(request);
+    if (body === undefined) {
+      return NextResponse.json({ success: false, message: 'Unsupported content type.' }, { status: 415 });
+    }
 
     if (typeof body?.scId !== 'string' || !body.scId) {
       return NextResponse.json(

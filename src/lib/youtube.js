@@ -26,8 +26,17 @@ async function fetchFromYouTube(searchQuery, pageToken = '', order = 'relevance'
   const API_KEY = process.env.YOUTUBE_API_KEY;
   if (!API_KEY) return null;
 
-  const tokenParam = pageToken ? `&pageToken=${pageToken}` : '';
-  const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=${maxResults}&q=${encodeURIComponent(searchQuery)}&type=video&order=${order}&key=${API_KEY}${tokenParam}`;
+  // Encode every parameter so caller input cannot add or override query parameters.
+  const params = new URLSearchParams({
+    part: 'snippet',
+    maxResults: String(maxResults),
+    q: searchQuery,
+    type: 'video',
+    order,
+    key: API_KEY,
+  });
+  if (pageToken) params.set('pageToken', pageToken);
+  const url = `https://www.googleapis.com/youtube/v3/search?${params}`;
 
   try {
     const res = await fetch(url, { cache: 'no-store', signal: AbortSignal.timeout(6000) });
@@ -118,7 +127,8 @@ async function loadSongs(cacheKey, searchQuery, pageToken, order, maxResults) {
   }
 
   const result = await fetchFromYouTube(searchQuery, pageToken, order, maxResults);
-  if (!result) return emptyResult();
+  // A provider failure is not an empty result: callers must show an error and must not cache it.
+  if (!result) return { ...emptyResult(), unavailable: true };
   const { shortsFilterComplete, ...page } = result;
   if (cacheAvailable && shortsFilterComplete) {
     try {

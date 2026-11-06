@@ -2,16 +2,17 @@
 
 import { decodeSongTitle } from '@/lib/song-title';
 
-import { Check, ExternalLink, FileText, ListPlus, Play, Radio, X } from 'lucide-react';
+import { Check, ExternalLink, FileText, ListMusic, ListPlus, Play, Radio, X } from 'lucide-react';
 import Image from 'next/image';
 import { useEffect, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import { formatDate, formatDateTime, getDictionary } from '@/lib/i18n';
 import { useMusicStore, useSettingsStore } from '@/lib/store';
+import { safeSourceUrl } from '@/lib/url-policy';
 
 export default function SongModal() {
   const { data: session } = useSession();
-  const { viewingSong, viewingPlaylist, setViewingSong, startPlayback } = useMusicStore();
+  const { viewingSong, viewingPlaylist, setViewingSong, startPlayback, enqueueSong, playNextSong } = useMusicStore();
   const language = useSettingsStore((state) => state.language);
   const t = getDictionary(language);
 
@@ -71,6 +72,11 @@ export default function SongModal() {
     }
   };
 
+  const flash = (text) => {
+    setFeedback({ type: 'ok', text });
+    setTimeout(() => setFeedback(null), 2500);
+  };
+
   const closeModal = () => {
     setShowPlaylistMenu(false);
     setFeedback(null);
@@ -81,7 +87,7 @@ export default function SongModal() {
 
   const isSC = viewingSong.source === 'soundcloud';
   const youtubeUrl = !isSC && viewingSong.id ? `https://www.youtube.com/watch?v=${viewingSong.id}` : null;
-  const soundcloudUrl = isSC ? viewingSong.sourceUrl : null;
+  const soundcloudUrl = isSC ? safeSourceUrl(viewingSong.sourceUrl) : null;
   const songDetails = [
     {
       icon: Radio,
@@ -166,6 +172,22 @@ export default function SongModal() {
                   {t.soundcloud?.openOnSoundCloud || 'Open on SoundCloud'}
                 </a>
               )}
+              <button
+                type="button"
+                onClick={() => { playNextSong(viewingSong); flash(t.player.queuedNext); }}
+                className="pill-button gap-2 px-5 py-3 text-sm font-bold"
+              >
+                <ListMusic size={18} />
+                {t.player.queueNext}
+              </button>
+              <button
+                type="button"
+                onClick={() => { enqueueSong(viewingSong); flash(t.player.queuedAdd); }}
+                className="pill-button gap-2 px-5 py-3 text-sm font-bold"
+              >
+                <ListPlus size={18} />
+                {t.player.queueAdd}
+              </button>
             </div>
 
             {/* Add to Playlist */}

@@ -42,6 +42,7 @@ test('autocomplete API validates before upstream calls and handles outages witho
   let calls = 0;
   const { GET } = await loadModule('src/app/api/search/suggestions/route.js', {
     '@/lib/youtube-suggestions': { getSearchSuggestions: async () => { calls++; throw new Error('private upstream details'); } },
+    '@/lib/rate-limit': { clientKey: () => 'test-client', consumeRateLimit: async () => true },
     'next/server': { NextResponse: { json: (data, options) => Response.json(data, options) } },
   });
   for (const query of ['q=', 'q=a']) assert.equal((await GET(new Request(`http://localhost/api/search/suggestions?${query}`))).status, 200);

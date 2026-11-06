@@ -61,6 +61,7 @@ test('lyrics API rejects invalid metadata before any external lookup and contain
   let calls = 0;
   const { GET } = await loadModule('src/app/api/lyrics/route.js', {
     '@/lib/lyrics-provider': { lookupLyrics: async () => { calls++; throw new Error('private upstream detail'); } },
+    '@/lib/rate-limit': { clientKey: () => 'test-client', consumeRateLimit: async () => true },
     'next/server': { NextResponse: { json: (data, options) => Response.json(data, options) } },
   });
   for (const query of ['title=&artist=Artist', 'title=Song&artist=Artist&duration=-1', `title=${'a'.repeat(251)}&artist=Artist`]) {

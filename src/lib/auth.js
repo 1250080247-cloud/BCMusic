@@ -2,7 +2,12 @@ import CredentialsProvider from 'next-auth/providers/credentials';
 import GoogleProvider from 'next-auth/providers/google';
 import bcrypt from 'bcryptjs';
 import dbConnect from '@/lib/mongodb';
+import { consumeRateLimit } from '@/lib/rate-limit';
 import User from '@/models/User';
+
+// Unknown usernames still run one bcrypt comparison, so response time does not reveal which accounts exist.
+let placeholderHash;
+const dummyHash = () => (placeholderHash ??= bcrypt.hashSync('bcmusic-timing-placeholder', 10));
 
 export const authOptions = {
   providers: [
@@ -20,14 +25,17 @@ export const authOptions = {
         password: { label: 'Password', type: 'password' },
       },
       async authorize(credentials) {
-        if (!credentials?.username || !credentials?.password) return null;
+        if (typeof credentials?.username !== 'string' || typeof credentials?.password !== 'string') return null;
+        if (!credentials.username || !credentials.password) return null;
+
+        const username = credentials.username.toLowerCase().trim();
+        // Per-account limit: 10 attempts per 15 minutes. Authorize receives no client IP.
+        if (!(await consumeRateLimit(`login:${username}`, { limit: 10, windowMs: 15 * 60_000 }))) return null;
 
         await dbConnect();
-        const user = await User.findOne({ username: credentials.username.toLowerCase().trim() });
-        if (!user || !user.password) return null; // no password = OAuth-only account
-
-        const isValid = await bcrypt.compare(credentials.password, user.password);
-        if (!isValid) return null;
+        const user = await User.findOne({ username });
+        const isValid = await bcrypt.compare(credentials.password, user?.password || dummyHash());
+        if (!user || !user.password || !isValid) return null; // no password = OAuth-only account
 
         return {
           id: user._id.toString(),

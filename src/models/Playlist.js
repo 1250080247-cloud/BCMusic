@@ -28,6 +28,11 @@ const PlaylistSchema = new mongoose.Schema({
     type: [SongSubSchema],
     default: [],
   },
+  // Public playlists are readable at /shared/[id] without signing in.
+  isPublic: {
+    type: Boolean,
+    default: false,
+  },
   createdAt: {
     type: Date,
     default: Date.now,

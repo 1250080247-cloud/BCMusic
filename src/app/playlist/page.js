@@ -5,7 +5,7 @@ import PlaylistArtwork from '@/components/PlaylistArtwork';
 
 import { decodeSongTitle } from '@/lib/song-title';
 
-import { ChevronDown, ChevronUp, ListMusic, Play, Plus, Trash2, X } from 'lucide-react';
+import { Check, ChevronDown, ChevronUp, Globe, ListMusic, ListPlus, Lock, Pencil, Play, Plus, Share2, Trash2, X } from 'lucide-react';
 import Image from 'next/image';
 import { useEffect, useState } from 'react';
 import { useSession } from 'next-auth/react';
@@ -17,13 +17,16 @@ import { useMusicStore, useSettingsStore } from '@/lib/store';
 export default function PlaylistPage() {
   const { data: session } = useSession();
   const language = useSettingsStore((state) => state.language);
-  const { startPlayback, setViewingSong } = useMusicStore();
+  const { startPlayback, setViewingSong, enqueueSong } = useMusicStore();
   const t = getDictionary(language);
 
   const [playlists, setPlaylists] = useState([]);
   const [newName, setNewName] = useState('');
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState(null);
+  const [editingId, setEditingId] = useState(null);
+  const [editName, setEditName] = useState('');
+  const [notice, setNotice] = useState('');
 
   useEffect(() => {
     let cancelled = false;
@@ -43,6 +46,23 @@ export default function PlaylistPage() {
     load();
     return () => { cancelled = true; };
   }, [session?.user?.id]);
+
+  // Shows a short status line that clears itself.
+  const flash = (text) => {
+    setNotice(text);
+    setTimeout(() => setNotice(''), 2500);
+  };
+
+  // Returns true when the server accepted the change.
+  const patchPlaylist = async (body) => {
+    const res = await fetch('/api/playlist', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    return Boolean(data.success);
+  };
 
   const handleCreate = async (event) => {
     event.preventDefault();
@@ -102,6 +122,55 @@ export default function PlaylistPage() {
     }
   };
 
+  const handleRename = async (playlistId) => {
+    const name = editName.trim();
+    if (!name) return;
+    try {
+      if (!(await patchPlaylist({ playlistId, name }))) throw new Error('rename rejected');
+      setPlaylists((prev) => prev.map((p) => (p.id === playlistId ? { ...p, name } : p)));
+      setEditingId(null);
+    } catch (error) {
+      console.error('Failed to rename playlist:', error);
+      flash(t.playlist.updateFailed);
+    }
+  };
+
+  const handleTogglePublic = async (pl) => {
+    try {
+      if (!(await patchPlaylist({ playlistId: pl.id, isPublic: !pl.isPublic }))) throw new Error('visibility rejected');
+      setPlaylists((prev) => prev.map((p) => (p.id === pl.id ? { ...p, isPublic: !pl.isPublic } : p)));
+    } catch (error) {
+      console.error('Failed to change playlist visibility:', error);
+      flash(t.playlist.updateFailed);
+    }
+  };
+
+  const handleCopyLink = async (pl) => {
+    try {
+      await navigator.clipboard.writeText(`${window.location.origin}/shared/${pl.id}`);
+      flash(t.playlist.linkCopied);
+    } catch (error) {
+      console.error('Failed to copy playlist link:', error);
+    }
+  };
+
+  // Swaps a song with its neighbor. The list updates at once and rolls back if the server refuses.
+  const handleMoveSong = async (pl, index, delta) => {
+    const target = index + delta;
+    if (target < 0 || target >= pl.songs.length) return;
+    const songs = [...pl.songs];
+    [songs[index], songs[target]] = [songs[target], songs[index]];
+    const setSongs = (list) => setPlaylists((prev) => prev.map((p) => (p.id === pl.id ? { ...p, songs: list } : p)));
+    setSongs(songs);
+    try {
+      if (!(await patchPlaylist({ playlistId: pl.id, songOrder: songs.map((s) => s.id) }))) throw new Error('reorder rejected');
+    } catch (error) {
+      console.error('Failed to reorder playlist:', error);
+      setSongs(pl.songs);
+      flash(t.playlist.updateFailed);
+    }
+  };
+
   const handlePlayAll = (playlist) => {
     if (!playlist.songs.length) return;
     startPlayback(playlist.songs[0], playlist.songs);
@@ -158,6 +227,12 @@ export default function PlaylistPage() {
           </button>
         </form>
 
+        {notice && (
+          <p role="status" className="mb-4 rounded-xl bg-purple-500/15 px-4 py-2 text-center text-sm font-semibold text-purple-300">
+            {notice}
+          </p>
+        )}
+
         {/* Playlists */}
         {loading ? (
           <div className="surface-card rounded-3xl p-10 text-center">
@@ -172,6 +247,7 @@ export default function PlaylistPage() {
           <MotionList animationKey={playlists.map((item) => item.id).join('|')} className="flex flex-col gap-4">
             {playlists.map((pl) => {
               const isExpanded = expandedId === pl.id;
+              const isEditing = editingId === pl.id;
 
               return (
                 <div key={pl.id} className="surface-card overflow-hidden rounded-3xl">
@@ -179,7 +255,31 @@ export default function PlaylistPage() {
                   <div className="grid grid-cols-[80px_minmax(0,1fr)] items-center gap-x-4 gap-y-3 p-4 sm:flex sm:gap-6 sm:p-6">
                     <div className="row-span-2 sm:row-span-1"><PlaylistArtwork songs={pl.songs} /></div>
                     <div className="min-w-0 flex-1">
-                      <h2 className="break-words text-xl font-bold sm:text-2xl">{pl.name}</h2>
+                      {isEditing ? (
+                        <form
+                          onSubmit={(event) => { event.preventDefault(); handleRename(pl.id); }}
+                          className="flex gap-2"
+                        >
+                          <input
+                            type="text"
+                            value={editName}
+                            onChange={(event) => setEditName(event.target.value)}
+                            aria-label={t.playlist.rename}
+                            autoFocus
+                            className="search-input min-w-0 flex-1 rounded-xl px-3 py-2 text-sm font-semibold"
+                          />
+                          <button
+                            type="submit"
+                            disabled={!editName.trim()}
+                            aria-label={t.playlist.save}
+                            className="flex h-10 w-10 items-center justify-center rounded-full text-emerald-400 transition hover:bg-emerald-500/15 disabled:opacity-40"
+                          >
+                            <Check size={18} />
+                          </button>
+                        </form>
+                      ) : (
+                        <h2 className="break-words text-xl font-bold sm:text-2xl">{pl.name}</h2>
+                      )}
                       <p className="muted-text mt-1 text-xs leading-5 sm:text-sm">
                         {pl.songs.length} {t.playlist.songCount}
                         {pl.createdAt && ` · ${t.playlist.createdAt} ${formatDateTime(pl.createdAt, language)}`}
@@ -195,6 +295,36 @@ export default function PlaylistPage() {
                           title={t.playlist.playAll}
                         >
                           <Play fill="white" size={18} />
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => { setEditingId(isEditing ? null : pl.id); setEditName(pl.name); }}
+                        className="flex h-11 w-11 items-center justify-center rounded-full text-[var(--muted-text)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--app-text)]"
+                        aria-label={t.playlist.rename}
+                        title={t.playlist.rename}
+                      >
+                        <Pencil size={16} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleTogglePublic(pl)}
+                        className={`flex h-11 w-11 items-center justify-center rounded-full transition hover:bg-[var(--surface-hover)] ${pl.isPublic ? 'text-cyan-400' : 'text-[var(--muted-text)] hover:text-[var(--app-text)]'}`}
+                        aria-label={pl.isPublic ? t.playlist.makePrivate : t.playlist.makePublic}
+                        aria-pressed={Boolean(pl.isPublic)}
+                        title={pl.isPublic ? t.playlist.makePrivate : t.playlist.makePublic}
+                      >
+                        {pl.isPublic ? <Globe size={16} /> : <Lock size={16} />}
+                      </button>
+                      {pl.isPublic && (
+                        <button
+                          type="button"
+                          onClick={() => handleCopyLink(pl)}
+                          className="flex h-11 w-11 items-center justify-center rounded-full text-[var(--muted-text)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--app-text)]"
+                          aria-label={t.playlist.copyLink}
+                          title={t.playlist.copyLink}
+                        >
+                          <Share2 size={16} />
                         </button>
                       )}
                       <button
@@ -229,7 +359,7 @@ export default function PlaylistPage() {
                           <p className="muted-text text-xs font-semibold uppercase tracking-[0.2em]">
                             {t.playlist.songsInPlaylist}
                           </p>
-                          {pl.songs.map((song) => (
+                          {pl.songs.map((song, index) => (
                             <div
                               key={song.id}
                               className="group flex items-center gap-3 rounded-2xl p-3 transition hover:bg-[var(--surface-hover)]"
@@ -256,7 +386,36 @@ export default function PlaylistPage() {
                                 </button>
                                 <p className="muted-text truncate text-xs">{song.artist}</p>
                               </div>
-                              <div className="flex items-center gap-2">
+                              <div className="flex items-center gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => handleMoveSong(pl, index, -1)}
+                                  disabled={index === 0}
+                                  className="flex h-8 w-8 items-center justify-center rounded-full text-[var(--muted-text)] transition hover:text-[var(--app-text)] disabled:opacity-30"
+                                  aria-label={t.playlist.moveUp}
+                                  title={t.playlist.moveUp}
+                                >
+                                  <ChevronUp size={14} />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleMoveSong(pl, index, 1)}
+                                  disabled={index === pl.songs.length - 1}
+                                  className="flex h-8 w-8 items-center justify-center rounded-full text-[var(--muted-text)] transition hover:text-[var(--app-text)] disabled:opacity-30"
+                                  aria-label={t.playlist.moveDown}
+                                  title={t.playlist.moveDown}
+                                >
+                                  <ChevronDown size={14} />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => { enqueueSong(song); flash(t.player.queuedAdd); }}
+                                  className="flex h-8 w-8 items-center justify-center rounded-full text-[var(--muted-text)] transition hover:text-[var(--app-text)]"
+                                  aria-label={t.player.queueAdd}
+                                  title={t.player.queueAdd}
+                                >
+                                  <ListPlus size={14} />
+                                </button>
                                 <button
                                   type="button"
                                   onClick={() => {

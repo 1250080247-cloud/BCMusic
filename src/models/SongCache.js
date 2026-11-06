@@ -19,7 +19,6 @@ const SongCacheSchema = new mongoose.Schema({
     type: String,
     required: true,
     unique: true,
-    index: true,
   },
   query: {
     type: String,
@@ -53,7 +52,6 @@ const SongCacheSchema = new mongoose.Schema({
   cachedAt: {
     type: Date,
     default: Date.now,
-    index: true,
   },
 });
 

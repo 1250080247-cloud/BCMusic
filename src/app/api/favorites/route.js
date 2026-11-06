@@ -3,6 +3,10 @@ import { restoreSoundCloudMetadata } from '@/lib/song-metadata';
 import dbConnect from '@/lib/mongodb';
 import Favorite from '@/models/Favorite';
 import { NextResponse } from 'next/server';
+import { LIMITS, boundedText, optionalText, readJsonBody } from '@/lib/input';
+import { cleanTrackUrls, safeHttpsUrl } from '@/lib/url-policy';
+
+const SOURCES = ['youtube', 'soundcloud'];
 
 // Favorites belong to the authenticated account.
 export async function GET(request) {
@@ -40,34 +44,40 @@ export async function POST(request) {
     if (!userId) {
       return NextResponse.json({ success: false, message: 'Chưa đăng nhập.' }, { status: 401 });
     }
-    const body = await request.json();
+    const body = await readJsonBody(request);
+    if (body === undefined) {
+      return NextResponse.json({ success: false, message: 'Unsupported content type.' }, { status: 415 });
+    }
 
-    const { song } = body;
-    if (typeof song?.id !== 'string' || typeof song?.title !== 'string' || !song.id || !song.title.trim()) {
-      return NextResponse.json(
-        { success: false, message: 'Missing song info.' },
-        { status: 400 }
-      );
+    const song = body?.song;
+    const songId = boundedText(song?.id, LIMITS.id);
+    const title = boundedText(song?.title, LIMITS.text);
+    if (!songId || !title) {
+      return NextResponse.json({ success: false, message: 'Missing song info.' }, { status: 400 });
     }
 
     await dbConnect();
-    // Tạo favorite mới (nếu đã tồn tại nhờ index unique sẽ tự báo lỗi hoặc ta dùng findOneAndUpdate)
-    const favorite = await Favorite.findOneAndUpdate(
-      { userId, songId: song.id },
-      {
-        userId,
-        songId: song.id,
-        title: song.title,
-        thumbnail: song.thumbnail || '',
-        artist: song.artist || 'Unknown',
-        publishedAt: song.publishedAt || '',
-        embedUrl: song.embedUrl,
-        sourceUrl: song.sourceUrl,
-        source: song.source || 'youtube',
-        favoritedAt: new Date(),
-      },
-      { upsert: true, returnDocument: 'after' }
-    );
+    const urls = cleanTrackUrls(song);
+    const update = {
+      userId,
+      songId,
+      title,
+      thumbnail: safeHttpsUrl(song.thumbnail) ?? '',
+      artist: optionalText(song.artist, LIMITS.text) || 'Unknown',
+      publishedAt: optionalText(song.publishedAt, 64) || '',
+      embedUrl: urls.embedUrl,
+      sourceUrl: urls.sourceUrl,
+      source: SOURCES.includes(song.source) ? song.source : 'youtube',
+      favoritedAt: new Date(),
+    };
+    let favorite;
+    try {
+      // Upsert keyed by (userId, songId). The unique index turns a concurrent duplicate into E11000.
+      favorite = await Favorite.findOneAndUpdate({ userId, songId }, update, { upsert: true, returnDocument: 'after' });
+    } catch (error) {
+      if (error.code !== 11000) throw error;
+      favorite = await Favorite.findOne({ userId, songId }).lean();
+    }
 
     return NextResponse.json({ success: true, data: favorite });
   } catch (error) {

@@ -1,6 +1,7 @@
 "use client";
 
 import MotionList from '@/components/MotionList';
+import { safeSourceUrl } from '@/lib/url-policy';
 
 import { AlertCircle, Check, CloudDownload, ExternalLink, Loader2, Music, Plus, Trash2, X } from 'lucide-react';
 import Image from 'next/image';
@@ -256,7 +257,7 @@ export default function SoundCloudLibrary() {
                     {/* Actions */}
                     <div className="flex items-center gap-2">
                       <a
-                        href={track.sourceUrl}
+                        href={safeSourceUrl(track.sourceUrl) ?? undefined}
                         target="_blank"
                         rel="noreferrer"
                         className="flex h-9 w-9 items-center justify-center rounded-full text-[var(--muted-text)] transition hover:bg-[var(--surface-hover)] hover:text-orange-400"

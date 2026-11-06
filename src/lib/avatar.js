@@ -1,3 +1,5 @@
+const AVATAR_HOSTS = ['googleusercontent.com', 'ggpht.com'];
+
 export function isAllowedAvatar(image) {
   if (typeof image !== 'string') return false;
   if (!image) return true;
@@ -7,7 +9,9 @@ export function isAllowedAvatar(image) {
   try {
     const url = new URL(image);
     const pathname = decodeURIComponent(url.pathname).replace(/\/+/g, '/').replace(/\/+$/, '');
-    return url.protocol === 'https:' && !url.username && !url.password && pathname !== '/api/user/avatar';
+    // External avatars are redirected to, so only hosts that serve Google profile pictures are accepted.
+    const trustedHost = AVATAR_HOSTS.some((host) => url.hostname === host || url.hostname.endsWith(`.${host}`));
+    return url.protocol === 'https:' && !url.username && !url.password && trustedHost && pathname !== '/api/user/avatar';
   } catch {
     return false;
   }

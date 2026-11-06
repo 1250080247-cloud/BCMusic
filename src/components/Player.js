@@ -2,13 +2,19 @@
 
 import { decodeSongTitle } from '@/lib/song-title';
 
-import { FileText, Heart, Pause, Play, Repeat, Repeat1, Shuffle, SkipBack, SkipForward, Volume2, X } from 'lucide-react';
+import { FileText, Heart, Pause, Play, Repeat, Repeat1, Shuffle, SkipBack, SkipForward, Timer, Volume2, X } from 'lucide-react';
 import Image from 'next/image';
 import { useEffect, useRef, useState, useCallback } from 'react';
 import YouTube from 'react-youtube';
 import { getDictionary } from '@/lib/i18n';
 import { useSession } from 'next-auth/react';
 import { useMusicStore, useSettingsStore } from '@/lib/store';
+import { safeEmbedUrl } from '@/lib/url-policy';
+
+// Module-level so react-youtube does not see a new options object on every render.
+const YOUTUBE_OPTS = { playerVars: { autoplay: 1, controls: 0, rel: 0 } };
+// Sleep timer choices in minutes. 0 means off.
+const SLEEP_OPTIONS = [0, 15, 30, 60];
 
 export default function Player() {
   const { data: session } = useSession();
@@ -21,6 +27,13 @@ export default function Player() {
   const lastSongIdRef = useRef(null);
   const scApiLoadedRef = useRef(false);
   const handleTrackEndRef = useRef(null);
+  const playNextRef = useRef(null);
+  const togglePlayRef = useRef(null);
+  const historySavedForRef = useRef(null);
+  const consecutiveErrorsRef = useRef(0);
+  const shuffleRoundRef = useRef(new Set());
+  const [sleepMinutes, setSleepMinutes] = useState(0);
+  const [sleepEndsAt, setSleepEndsAt] = useState(null);
   const {
     currentSong,
     playlist,
@@ -31,7 +44,10 @@ export default function Player() {
     setNowPlayingOpen,
     favorites,
     addFavorite,
-    removeFavorite
+    removeFavorite,
+    shuffle,
+    toggleShuffle,
+    shiftQueue,
   } = useMusicStore();
   const language = useSettingsStore((state) => state.language);
   const volume = useSettingsStore((state) => state.volume);
@@ -43,7 +59,7 @@ export default function Player() {
   const handleFavoriteToggle = async () => {
     if (!currentSong) return;
     if (!session?.user?.id) {
-      alert(language === 'vi' ? 'Vui lòng đăng nhập để lưu bài hát yêu thích!' : 'Please sign in to favorite songs!');
+      alert(t.player.loginToFavorite);
       return;
     }
 
@@ -79,27 +95,31 @@ export default function Player() {
 
   const isSoundCloud = currentSong?.source === 'soundcloud';
 
-  // Save to history whenever currentSong changes
-  useEffect(() => {
-    if (!currentSong) return;
-
+  // Record history once a track actually starts (player reports playback), so tracks that never play are not logged.
+  const recordPlayback = (song) => {
+    if (!song || historySavedForRef.current === song.id) return;
+    historySavedForRef.current = song.id;
     fetch('/api/history', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        id: currentSong.id,
-        title: currentSong.title,
-        thumbnail: currentSong.thumbnail,
-        artist: currentSong.artist,
-        publishedAt: currentSong.publishedAt,
-        lyrics: currentSong.lyrics,
-        embedUrl: currentSong.embedUrl,
-        sourceUrl: currentSong.sourceUrl,
-        source: currentSong.source || 'youtube',
+        id: song.id,
+        title: song.title,
+        thumbnail: song.thumbnail,
+        artist: song.artist,
+        publishedAt: song.publishedAt,
+        lyrics: song.lyrics,
+        embedUrl: song.embedUrl,
+        sourceUrl: song.sourceUrl,
+        source: song.source || 'youtube',
       }),
-    }).catch((error) => console.log('Unable to save listening history', error));
+    }).catch((error) => console.error('Unable to save listening history', error));
+  };
+
+  useEffect(() => {
+    if (!currentSong) historySavedForRef.current = null;
   }, [currentSong]);
 
   // Broadcast play-state to NowPlayingPanel
@@ -131,26 +151,8 @@ export default function Player() {
       }
       setCurrentTime(time);
     };
-    const handleTogglePlay = () => {
-      if (isSoundCloud) {
-        if (!scWidgetRef.current) return;
-        try {
-          scWidgetRef.current.isPaused((paused) => {
-            if (paused) scWidgetRef.current.play();
-            else scWidgetRef.current.pause();
-          });
-        } catch {
-          if (isPlaying) scWidgetRef.current.pause();
-          else scWidgetRef.current.play();
-          setIsPlaying(!isPlaying);
-        }
-      } else {
-        if (!ytPlayerRef.current || typeof ytPlayerRef.current.playVideo !== 'function') return;
-        if (isPlaying) ytPlayerRef.current.pauseVideo();
-        else ytPlayerRef.current.playVideo();
-        setIsPlaying(!isPlaying);
-      }
-    };
+    // Same behavior as the play button: the ref always holds the latest togglePlay.
+    const handleTogglePlay = () => togglePlayRef.current?.();
     window.addEventListener('bcmusic:seekto', handleSeekTo);
     window.addEventListener('bcmusic:toggleplay', handleTogglePlay);
     return () => {
@@ -213,11 +215,19 @@ export default function Player() {
       return;
     }
 
+    // Another mount may already be loading the same script.
+    if (document.querySelector('script[data-sc-widget-api]')) return;
+
     const script = document.createElement('script');
     script.src = 'https://w.soundcloud.com/player/api.js';
     script.async = true;
+    script.dataset.scWidgetApi = 'true';
     script.onload = () => {
       scApiLoadedRef.current = true;
+    };
+    script.onerror = () => {
+      script.remove();
+      console.error('SoundCloud Widget API failed to load.');
     };
     document.head.appendChild(script);
   }, []);
@@ -255,6 +265,7 @@ export default function Player() {
 
       widget.bind(window.SC.Widget.Events.PLAY, () => {
         setIsPlaying(true);
+        recordPlayback(currentSong);
       });
 
       widget.bind(window.SC.Widget.Events.PAUSE, () => {
@@ -276,10 +287,15 @@ export default function Player() {
     if (window.SC?.Widget) {
       initWidget();
     } else {
+      // Give up after 15 seconds instead of polling for the rest of the track.
+      const startedAt = Date.now();
       const checkInterval = setInterval(() => {
         if (window.SC?.Widget) {
           clearInterval(checkInterval);
           initWidget();
+        } else if (Date.now() - startedAt > 15_000) {
+          clearInterval(checkInterval);
+          console.error('SoundCloud Widget API did not become available.');
         }
       }, 200);
 
@@ -317,7 +333,36 @@ export default function Player() {
   }, [isSoundCloud]);
 
   const playNext = useCallback(() => {
+    // A queued track plays before the list continues.
+    const queued = shiftQueue();
+    if (queued) {
+      setCurrentSong(queued);
+      return;
+    }
     if (!playlist.length || !currentSong) return;
+
+    if (shuffle) {
+      // Each round plays every track once. Repeat off stops at the end of a round; repeat on starts another.
+      const played = shuffleRoundRef.current;
+      played.add(currentSong.id);
+      let pool = playlist.filter((song) => !played.has(song.id));
+      if (!pool.length) {
+        if (repeatMode === 'off') {
+          stopPlayback();
+          return;
+        }
+        played.clear();
+        played.add(currentSong.id);
+        pool = playlist.filter((song) => song.id !== currentSong.id);
+      }
+      if (!pool.length) {
+        replayTrack();
+        return;
+      }
+      setCurrentSong(pool[Math.floor(Math.random() * pool.length)]);
+      return;
+    }
+
     const currentIndex = playlist.findIndex((song) => song.id === currentSong.id);
     if (repeatMode === 'off') {
       // Stop at end of playlist
@@ -336,16 +381,42 @@ export default function Player() {
       if (next.id === currentSong.id) replayTrack();
       else setCurrentSong(next);
     }
-  }, [playlist, currentSong, setCurrentSong, repeatMode, stopPlayback, replayTrack]);
+  }, [playlist, currentSong, setCurrentSong, repeatMode, shuffle, shiftQueue, stopPlayback, replayTrack]);
+
+  useEffect(() => {
+    playNextRef.current = playNext;
+  }, [playNext]);
+
+  // Sleep timer: stop playback when the chosen time has passed.
+  const cycleSleepTimer = () => {
+    const next = SLEEP_OPTIONS[(SLEEP_OPTIONS.indexOf(sleepMinutes) + 1) % SLEEP_OPTIONS.length];
+    setSleepMinutes(next);
+    setSleepEndsAt(next ? Date.now() + next * 60_000 : null);
+  };
+
+  useEffect(() => {
+    if (!sleepEndsAt) return undefined;
+    const timer = setTimeout(() => {
+      stopPlayback();
+      setSleepEndsAt(null);
+      setSleepMinutes(0);
+    }, Math.max(0, sleepEndsAt - Date.now()));
+    return () => clearTimeout(timer);
+  }, [sleepEndsAt, stopPlayback]);
 
   const playPrev = useCallback(() => {
     if (!playlist.length || !currentSong) return;
+    // Past the first few seconds, Previous restarts the current track, as most players do.
+    if (currentTime > 3) {
+      replayTrack();
+      return;
+    }
     const currentIndex = playlist.findIndex((song) => song.id === currentSong.id);
     const prevIndex = currentIndex === -1 ? 0 : (currentIndex - 1 + playlist.length) % playlist.length;
     const previous = playlist[prevIndex];
     if (previous.id === currentSong.id) replayTrack();
     else setCurrentSong(previous);
-  }, [playlist, currentSong, setCurrentSong, replayTrack]);
+  }, [playlist, currentSong, currentTime, setCurrentSong, replayTrack]);
 
   // Both control surfaces use this player as the single media controller.
   useEffect(() => {
@@ -415,6 +486,11 @@ export default function Player() {
     }
   };
 
+  // The media-key/event handler reads the latest togglePlay through this ref.
+  useEffect(() => {
+    togglePlayRef.current = togglePlay;
+  });
+
   const formatTime = (time) => {
     if (!time) return "0:00";
     const minutes = Math.floor(time / 60);
@@ -445,11 +521,17 @@ export default function Player() {
         <div className="hidden">
           <YouTube
             videoId={currentSong.id}
-            opts={{ playerVars: { autoplay: 1, controls: 0, rel: 0 } }}
+            opts={YOUTUBE_OPTS}
             onReady={onPlayerReady}
             onError={(event) => {
               setIsPlaying(false);
               window.dispatchEvent(new CustomEvent('bcmusic:playerror', { detail: { songId: currentSong.id, code: event.data } }));
+              // Skip an unplayable video so the queue keeps going. Stop after one failure per track in the list,
+              // and never skip while repeating one track.
+              consecutiveErrorsRef.current += 1;
+              if (repeatMode !== 'one' && consecutiveErrorsRef.current < Math.max(1, playlist.length)) {
+                playNextRef.current?.();
+              }
             }}
             onStateChange={(event) => {
               if (event.data === 1) {
@@ -458,7 +540,9 @@ export default function Player() {
                   setCurrentTime(0);
                   setDuration(0);
                 }
+                consecutiveErrorsRef.current = 0;
                 setIsPlaying(true);
+                recordPlayback(currentSong);
               }
               if (event.data === 2) setIsPlaying(false);
               if (event.data === 0) handleTrackEndRef.current?.();
@@ -468,7 +552,7 @@ export default function Player() {
       )}
 
       {/* SoundCloud Widget (only rendered for SoundCloud tracks) */}
-      {isSoundCloud && currentSong.embedUrl && (
+      {isSoundCloud && safeEmbedUrl(currentSong.embedUrl) && (
         <div className="hidden">
           <iframe
             ref={scIframeRef}
@@ -478,7 +562,7 @@ export default function Player() {
             width="100%"
             height="166"
             allow="autoplay"
-            src={currentSong.embedUrl}
+            src={safeEmbedUrl(currentSong.embedUrl)}
           />
         </div>
       )}
@@ -526,8 +610,10 @@ export default function Player() {
           <div className="player-controls-buttons">
             <button
               type="button"
-              aria-label="Shuffle"
-              className="player-control-btn muted-text"
+              aria-label={t.player.shuffle}
+              aria-pressed={shuffle}
+              onClick={toggleShuffle}
+              className={`player-control-btn ${shuffle ? 'text-pink-400' : 'muted-text'}`}
             >
               <Shuffle size={16} />
             </button>
@@ -607,7 +693,7 @@ export default function Player() {
         <div className="player-right-actions">
           <button
             type="button"
-            aria-label="Favorite"
+            aria-label={t.player.favorite}
             onClick={handleFavoriteToggle}
             className={`player-control-btn ${isFavorited ? 'text-pink-500 hover:text-pink-600' : 'muted-text'}`}
           >
@@ -620,6 +706,16 @@ export default function Player() {
             className="player-control-btn muted-text"
           >
             <FileText size={18} />
+          </button>
+          <button
+            type="button"
+            aria-label={t.player.sleepTimer}
+            title={t.player.sleepTimer}
+            onClick={cycleSleepTimer}
+            className={`player-control-btn flex items-center ${sleepMinutes ? 'text-cyan-400' : 'muted-text'}`}
+          >
+            <Timer size={18} />
+            {sleepMinutes > 0 && <span className="ml-0.5 text-[10px] font-bold">{sleepMinutes}m</span>}
           </button>
           <div className="player-volume-group">
             <Volume2 size={16} className="muted-text flex-shrink-0" />
@@ -634,7 +730,7 @@ export default function Player() {
           </div>
           <button
             type="button"
-            aria-label="Close player"
+            aria-label={t.player.closePlayer}
             onClick={handleCloseSong}
             className="player-control-btn muted-text"
           >
