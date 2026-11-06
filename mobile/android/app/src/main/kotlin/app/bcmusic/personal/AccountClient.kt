@@ -204,16 +204,49 @@ internal class AccountClient(
 
     @Synchronized fun profileCollections(): String {
         val (account, jar) = activeSession()
-        fun fetch(path: String): JSONArray {
-            val (status, response) = request(jar, path)
-            if (status == 401) throw SourceFailure("SESSION", "Phiên đã hết hạn. Hãy đăng nhập lại.")
-            return response.optJSONArray("data")?.takeIf { status == 200 && response.optBoolean("success") }
-                ?: throw SourceFailure("PROFILE", "Chưa tải được dữ liệu hồ sơ.")
-        }
-        val favorites = fetch("/api/favorites")
-        val playlists = fetch("/api/playlist")
+        val favorites = collection(jar, "/api/favorites")
+        val playlists = collection(jar, "/api/playlist")
         storeSession(account, jar)
         return JSONObject().put("favorites", favorites).put("playlists", playlists).toString()
+    }
+
+    private fun collection(jar: AccountCookies, path: String): JSONArray {
+        val (status, response) = request(jar, path)
+        if (status == 401) throw SourceFailure("SESSION", "Phiên đã hết hạn. Hãy đăng nhập lại.")
+        return response.optJSONArray("data")?.takeIf { status == 200 && response.optBoolean("success") }
+            ?: throw SourceFailure("PROFILE", "Chưa tải được dữ liệu tài khoản.")
+    }
+
+    @Synchronized fun favoriteIds(): List<String> {
+        val (account, jar) = activeSession()
+        val rows = collection(jar, "/api/favorites")
+        storeSession(account, jar)
+        return (0 until rows.length()).mapNotNull { rows.optJSONObject(it)?.optString("id") }
+    }
+
+    @Synchronized fun setFavorite(accountId: String, song: JSONObject, liked: Boolean) {
+        val (account, jar) = activeSession()
+        if (account.id != accountId) throw SourceFailure("SESSION", "Tài khoản đã thay đổi. Hãy thử lại.")
+        val source = SourceUrl.parse(song.optString("sourceUrl"))
+        val id = song.optString("id")
+        val title = song.optString("title").trim()
+        val validId = if (source.provider == "youtube") {
+            source.url.toHttpUrl().queryParameter("v") == id
+        } else Regex("sc_[0-9]{1,20}").matches(id)
+        if (!validId || title.length !in 1..500) throw SourceFailure("INPUT", "Thông tin bài hát không hợp lệ.")
+        val metadata = JSONObject().put("id", id).put("title", title)
+            .put("artist", song.optString("artist").take(500)).put("sourceUrl", source.url)
+            .put("source", source.provider).put("thumbnail", song.optString("thumbnail").take(2048))
+        val (status, response) = if (liked) {
+            request(jar, "/api/favorites", jsonBody(JSONObject().put("song", metadata)))
+        } else {
+            request(jar, "/api/favorites", delete = true, query = "songId" to id)
+        }
+        if (status == 401) throw SourceFailure("SESSION", "Phiên đã hết hạn. Hãy đăng nhập lại.")
+        val alreadyRemoved = !liked && status == 404 && response.optString("message") == "Favorite not found."
+        if (!alreadyRemoved && (status != 200 || !response.optBoolean("success")))
+            throw SourceFailure("FAVORITE", "Chưa cập nhật được bài yêu thích. Hãy thử lại.")
+        storeSession(account, jar)
     }
 
     @Synchronized fun savePlaylistSong(playlistId: String?, playlistName: String?, song: JSONObject) {
@@ -277,13 +310,14 @@ internal class AccountClient(
         storeSession(user, jar)
     }
 
-    private fun request(jar: AccountCookies, path: String, body: RequestBody? = null, delete: Boolean = false): Pair<Int, JSONObject> {
-        val url = origin.newBuilder().encodedPath(path).build()
+    private fun request(jar: AccountCookies, path: String, body: RequestBody? = null,
+        delete: Boolean = false, query: Pair<String, String>? = null): Pair<Int, JSONObject> {
+        val url = origin.newBuilder().encodedPath(path).apply {
+            if (query != null) addQueryParameter(query.first, query.second)
+        }.build()
         val request = Request.Builder().url(url).header("Accept", "application/json")
             .header("Cache-Control", "no-store").apply {
-                if (body != null) {
-                    if (delete) delete(body) else post(body)
-                }
+                if (delete) delete(body) else if (body != null) post(body)
             }.build()
         val client = transport.newBuilder().cookieJar(jar).followRedirects(false)
             .followSslRedirects(false).callTimeout(20, TimeUnit.SECONDS).build()

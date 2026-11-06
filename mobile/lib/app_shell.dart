@@ -31,8 +31,9 @@ class AppShell extends StatefulWidget {
 
 class _AppShellState extends State<AppShell> {
   static const _library = 2;
+  static const _playlists = 3;
   int _tab = 0, _shareSequence = 0;
-  bool _initialized = false;
+  bool _initialized = false, _showingProfile = false;
   MusicController get _music => widget.controller;
 
   @override
@@ -86,10 +87,17 @@ class _AppShellState extends State<AppShell> {
     );
   }
 
-  void _showProfile() => Navigator.push<void>(
-    context,
-    MaterialPageRoute(builder: (_) => ProfileScreen(controller: _music)),
-  );
+  Future<void> _showProfile() async {
+    setState(() => _showingProfile = true);
+    try {
+      await Navigator.push<void>(
+        context,
+        MaterialPageRoute(builder: (_) => ProfileScreen(controller: _music)),
+      );
+    } finally {
+      if (mounted) setState(() => _showingProfile = false);
+    }
+  }
 
   Future<void> _playSong(DiscoverySong song, List<DiscoverySong> queue) =>
       _music.playSource(
@@ -239,12 +247,17 @@ class _AppShellState extends State<AppShell> {
     listenable: Listenable.merge([_music, widget.discovery]),
     builder: (context, _) {
       final account = _music.snapshot.account;
+      final platform = _music.platform;
       final pages = [
         DiscoveryScreen(
           controller: widget.discovery,
-          playing: _music.playback.isPlaying,
           motion: _music.snapshot.preferences.motion,
-          onMotion: (motion) => _music.updatePreferences({'motion': motion}),
+          spectrum:
+              _tab == 0 &&
+                  _music.playback.isPlaying &&
+                  platform is AndroidMusicPlatform
+              ? platform.spectrum
+              : null,
           online: _music.snapshot.networkAvailable,
           onLibrary: () => _select(_library),
           onSong: _song,
@@ -254,11 +267,16 @@ class _AppShellState extends State<AppShell> {
         ),
         SearchScreen(
           controller: widget.discovery,
+          history: _music.snapshot.searchHistory,
+          onRecordSearch: _music.recordSearch,
           onSong: _song,
           onPlay: _playSong,
         ),
         HomeScreen(controller: _music, onAddToPlaylist: _addToPlaylist),
-        PlaylistScreen(controller: _music),
+        PlaylistScreen(
+          controller: _music,
+          active: _tab == _playlists && !_showingProfile,
+        ),
         HomeScreen(
           controller: _music,
           soundCloud: true,
@@ -273,7 +291,7 @@ class _AppShellState extends State<AppShell> {
             children: [
               ClipOval(
                 child: Image.asset(
-                  'assets/images/logo.jpg',
+                  'assets/images/logo.png',
                   width: 40,
                   height: 40,
                   fit: BoxFit.cover,
@@ -360,7 +378,7 @@ class _AppShellState extends State<AppShell> {
                   showAboutDialog(
                     context: context,
                     applicationName: 'BCMusic',
-                    applicationVersion: '1.2.4',
+                    applicationVersion: '1.2.5',
                   );
                 }
               },

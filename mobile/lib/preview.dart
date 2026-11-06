@@ -80,13 +80,16 @@ void main() {
   );
 }
 
-class _PreviewDiscovery implements DiscoveryRepository {
+class _PreviewDiscovery implements DiscoveryRepository, SearchSuggestions {
   @override
   Future<List<DiscoverySong>> feed(String query, String order) async => _songs;
   @override
   Future<List<DiscoverySong>> search(String query) async => _songs
       .where((song) => song.title.toLowerCase().contains(query.toLowerCase()))
       .toList();
+  @override
+  Future<List<String>> suggestions(String query) async =>
+      (await search(query)).map((song) => song.title).take(6).toList();
   @override
   void dispose() {}
 }
@@ -97,6 +100,34 @@ class _PreviewPlatform extends AndroidMusicPlatform {
   var _position = 38000;
   var _playing = false;
   var _preferences = const AppPreferences(volume: 65);
+  final _searches = <String>[];
+  final _history = <String, OfflineTrack>{};
+  final _favorites = <String, Map<String, String>>{
+    for (final song in _songs.take(2))
+      song.id: {
+        'id': song.id,
+        'title': song.title,
+        'artist': song.artist,
+        'sourceUrl': song.sourceUrl,
+        'thumbnail': song.thumbnail,
+      },
+  };
+
+  @override
+  Stream<List<double>> get spectrum => _previewSpectrum;
+
+  late final Stream<List<double>> _previewSpectrum = Stream.multi((stream) {
+    const samples = [
+      [.24, .73, .38],
+      [.71, .35, .57],
+      [.45, .28, .65],
+      [.85, .53, .24],
+    ];
+    final timer = Timer.periodic(const Duration(milliseconds: 125), (tick) {
+      stream.add(samples[tick.tick % samples.length]);
+    });
+    stream.onCancel = timer.cancel;
+  }, isBroadcast: true);
 
   final _downloads = <String, OfflineTrack>{};
   final _playlists = <String, LocalPlaylist>{};
@@ -113,6 +144,8 @@ class _PreviewPlatform extends AndroidMusicPlatform {
     account: _account,
     tracks: _downloads.values.toList(),
     playlists: _playlists.values.toList(),
+    searchHistory: List.of(_searches),
+    listeningHistory: _history.values.toList().reversed.toList(),
     preferences: _preferences,
     playback: PlaybackState(
       trackId: _song?.id,
@@ -143,6 +176,16 @@ class _PreviewPlatform extends AndroidMusicPlatform {
     _song = _songs.firstWhere((song) => song.sourceUrl == url);
     _playing = true;
     _position = 38000;
+    _history.remove(url);
+    _history[url] = _state.playback.track!;
+    _updates.add(_state);
+  }
+
+  @override
+  Future<void> recordSearch(String query) async {
+    _searches.removeWhere((term) => term.toLowerCase() == query.toLowerCase());
+    _searches.insert(0, query);
+    if (_searches.length > 12) _searches.removeLast();
     _updates.add(_state);
   }
 
@@ -191,16 +234,7 @@ class _PreviewPlatform extends AndroidMusicPlatform {
 
   @override
   Future<String?> getProfileCollections() async => jsonEncode({
-    'favorites': [
-      for (final song in _songs.take(2))
-        {
-          'id': song.id,
-          'title': song.title,
-          'artist': song.artist,
-          'sourceUrl': song.sourceUrl,
-          'thumbnail': song.thumbnail,
-        },
-    ],
+    'favorites': _favorites.values.toList().reversed.toList(),
     'playlists': [
       for (final entry in _webPlaylists.entries)
         {
@@ -210,6 +244,23 @@ class _PreviewPlatform extends AndroidMusicPlatform {
         },
     ],
   });
+
+  @override
+  Future<List<String>> getFavoriteIds() async => _favorites.keys.toList();
+
+  @override
+  Future<void> setFavorite(
+    String accountId,
+    Map<String, String> song,
+    bool liked,
+  ) async {
+    final id = song['id']!;
+    if (liked) {
+      _favorites[id] = song;
+    } else {
+      _favorites.remove(id);
+    }
+  }
 
   @override
   Future<void> saveWebPlaylistSong(

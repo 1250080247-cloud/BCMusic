@@ -20,8 +20,10 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
+enum _LibraryFilter { all, downloaded, listened, pending }
+
 class _HomeScreenState extends State<HomeScreen> {
-  int _filter = 0;
+  _LibraryFilter _filter = _LibraryFilter.all;
   String _search = '';
   MusicController get controller => widget.controller;
 
@@ -70,16 +72,22 @@ class _HomeScreenState extends State<HomeScreen> {
           )
           .toList();
       final completed = tracks.where((track) => track.isReady).length;
-      final visible = tracks
-          .where(
-            (track) =>
-                (_filter == 0 ||
-                    (_filter == 1 ? track.isReady : !track.isReady)) &&
-                '${track.title} ${track.artist}'.toLowerCase().contains(
-                  _search,
-                ),
-          )
-          .toList();
+      final showingHistory = _filter == _LibraryFilter.listened;
+      final visible =
+          (showingHistory ? controller.snapshot.listeningHistory : tracks)
+              .where(
+                (track) => '${track.title} ${track.artist}'
+                    .toLowerCase()
+                    .contains(_search),
+              )
+              .where(
+                (track) => switch (_filter) {
+                  _LibraryFilter.downloaded => track.isReady,
+                  _LibraryFilter.pending => !track.isReady,
+                  _ => true,
+                },
+              )
+              .toList();
       return CustomScrollView(
         slivers: [
           SliverPadding(
@@ -172,24 +180,37 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   const SizedBox(height: 20),
                 ],
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    for (final (index, label) in [
-                      'Tất cả',
-                      'Đã tải',
-                      'Đang tải / lỗi',
-                    ].indexed)
-                      ChoiceChip(
-                        label: Text(label),
-                        selected: _filter == index,
-                        onSelected: (_) => setState(() => _filter = index),
-                      ),
-                  ],
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    spacing: 6,
+                    children: [
+                      for (final (filter, label) in [
+                        (_LibraryFilter.all, 'Tất cả'),
+                        (_LibraryFilter.downloaded, 'Đã tải'),
+                        if (!widget.soundCloud)
+                          (_LibraryFilter.listened, 'Đã nghe'),
+                        (_LibraryFilter.pending, 'Đang tải / lỗi'),
+                      ])
+                        ChoiceChip(
+                          label: Text(label),
+                          padding: const EdgeInsets.symmetric(horizontal: 6),
+                          labelPadding: const EdgeInsets.symmetric(
+                            horizontal: 2,
+                          ),
+                          labelStyle: TextStyle(
+                            color: _filter == filter
+                                ? context.palette.onAction
+                                : context.palette.text,
+                          ),
+                          selected: _filter == filter,
+                          onSelected: (_) => setState(() => _filter = filter),
+                        ),
+                    ],
+                  ),
                 ),
                 const SizedBox(height: 14),
-                if (tracks.isNotEmpty) ...[
+                if (tracks.isNotEmpty || showingHistory) ...[
                   TextField(
                     onChanged: (text) =>
                         setState(() => _search = text.toLowerCase().trim()),
@@ -207,6 +228,17 @@ class _HomeScreenState extends State<HomeScreen> {
             const SliverFillRemaining(
               hasScrollBody: false,
               child: Center(child: CircularProgressIndicator()),
+            )
+          else if (showingHistory && visible.isEmpty)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Text(
+                  _search.isEmpty
+                      ? 'Các bài bạn đã phát trên thiết bị này sẽ hiện ở đây.'
+                      : 'Không tìm thấy bài đã nghe phù hợp.',
+                ),
+              ),
             )
           else if (visible.isEmpty)
             SliverFillRemaining(
@@ -255,6 +287,26 @@ class _HomeScreenState extends State<HomeScreen> {
               itemCount: visible.length,
               itemBuilder: (context, index) {
                 final track = visible[index];
+                if (showingHistory) {
+                  return ListTile(
+                    leading: TrackArtwork(
+                      path: track.artworkPath,
+                      url: track.artworkUrl,
+                      size: 48,
+                    ),
+                    title: Text(
+                      track.title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    subtitle: Text(
+                      track.artist,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    onTap: () => controller.playSource(track.sourceUrl),
+                  );
+                }
                 return TrackTile(
                   track: track,
                   busy: controller.isPending(track.id),

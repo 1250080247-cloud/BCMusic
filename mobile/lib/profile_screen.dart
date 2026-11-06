@@ -9,8 +9,6 @@ import 'app_theme.dart';
 import 'models.dart';
 import 'platform_bridge.dart';
 import 'playlist_screen.dart';
-import 'track_actions.dart';
-import 'track_widgets.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key, required this.controller});
@@ -45,10 +43,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
     super.dispose();
   }
 
-  Future<Map<String, dynamic>> _loadCollections() async {
-    final raw = await _platform?.getProfileCollections();
-    return raw == null ? {} : jsonDecode(raw) as Map<String, dynamic>;
-  }
+  Future<Map<String, dynamic>> _loadCollections() =>
+      loadAccountCollections(_platform);
+
+  void _refreshCollections() =>
+      setState(() => _collections = _loadCollections());
 
   void _edit(AccountProfile account) {
     _name.text = account.name;
@@ -111,131 +110,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     } finally {
       if (mounted) setState(() => _saving = false);
     }
-  }
-
-  List<PlaybackQueueItem> _songs(Object? data) {
-    if (data is! List) return [];
-    return [for (final row in data.whereType<Map>()) ?_song(row)];
-  }
-
-  PlaybackQueueItem? _song(Map row) {
-    final id = row['id'];
-    final source = row['sourceUrl'];
-    final url = source is String && source.isNotEmpty
-        ? source
-        : id is String && RegExp(r'^[A-Za-z0-9_-]{11}$').hasMatch(id)
-        ? 'https://www.youtube.com/watch?v=$id'
-        : null;
-    if (url == null) return null;
-    try {
-      return PlaybackQueueItem(
-        url: SourceLink.parse(url).url,
-        title: row['title'] is String ? row['title'] as String : 'Bài hát',
-        artist: row['artist'] is String ? row['artist'] as String : '',
-        artworkUrl: row['thumbnail'] is String
-            ? row['thumbnail'] as String
-            : null,
-      );
-    } on FormatException {
-      return null;
-    }
-  }
-
-  Widget _songRow(
-    PlaybackQueueItem song,
-    List<PlaybackQueueItem> queue, {
-    Widget? trailing,
-  }) => ListTile(
-    contentPadding: EdgeInsets.zero,
-    leading: TrackArtwork(url: song.artworkUrl, size: 44),
-    title: Text(song.title, maxLines: 2, overflow: TextOverflow.ellipsis),
-    subtitle: Text(song.artist, maxLines: 1, overflow: TextOverflow.ellipsis),
-    trailing: trailing,
-    onTap: () => widget.controller.playSource(
-      song.url,
-      queue: queue.map((item) => item.url),
-      queueItems: queue,
-    ),
-  );
-
-  Future<void> _openWebPlaylist(Map playlist) async {
-    final platform = _platform;
-    final id = playlist['id'];
-    if (platform == null || id is! String) return;
-    final raw = playlist['songs'];
-    final entries = <String, PlaybackQueueItem>{
-      if (raw is List)
-        for (final row in raw.whereType<Map>())
-          if (row['id'] case final String songId) songId: ?_song(row),
-    };
-    final pending = <String>{};
-    await Navigator.push<void>(
-      context,
-      MaterialPageRoute(
-        builder: (_) => StatefulBuilder(
-          builder: (context, update) => Scaffold(
-            appBar: AppBar(
-              title: Text(playlist['name']?.toString() ?? 'Playlist'),
-            ),
-            body: ListView(
-              padding: const EdgeInsets.all(20),
-              children: [
-                if (entries.isEmpty) const Text('Chưa có bài có thể phát.'),
-                for (final MapEntry(key: songId, value: song)
-                    in entries.entries)
-                  _songRow(
-                    song,
-                    entries.values.toList(),
-                    trailing: TrackMenu(
-                      title: song.title,
-                      inPlaylist: true,
-                      onSelected: (action) async {
-                        final controller = widget.controller;
-                        switch (action) {
-                          case TrackAction.share:
-                            await shareSong(context, controller, song.url);
-                          case TrackAction.playlist:
-                            await pickWebPlaylist(
-                              context,
-                              platform,
-                              songId,
-                              song,
-                            );
-                          case TrackAction.queue:
-                            enqueueSong(context, controller, song);
-                          case TrackAction.info:
-                            await showTrackInfo(context, song);
-                          case TrackAction.remove:
-                            if (!pending.add(songId)) return;
-                            try {
-                              await platform.removeWebPlaylistSong(id, songId);
-                              if (context.mounted) {
-                                update(() => entries.remove(songId));
-                              }
-                            } on PlatformException catch (error) {
-                              if (context.mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text(
-                                      error.message ?? 'Chưa xóa được bài hát.',
-                                    ),
-                                  ),
-                                );
-                              }
-                            } finally {
-                              pending.remove(songId);
-                            }
-                        }
-                      },
-                    ),
-                  ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-    if (mounted) setState(() => _collections = _loadCollections());
   }
 
   @override
@@ -377,25 +251,39 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                     : 'Chưa tải được hồ sơ.',
                               ),
                               TextButton(
-                                onPressed: () => setState(
-                                  () => _collections = _loadCollections(),
-                                ),
+                                onPressed: _refreshCollections,
                                 child: const Text('Thử lại'),
                               ),
                             ],
                           );
                         }
-                        final favorites = _songs(snapshot.data?['favorites']);
-                        final lists = snapshot.data?['playlists'];
-                        final playlists = lists is List
-                            ? lists.whereType<Map>().toList()
-                            : <Map>[];
+                        final favorites = [
+                          if (snapshot.data?['favorites'] case final List rows)
+                            for (final row in rows.whereType<Map>())
+                              ?readAccountSong(row),
+                        ];
+                        final playlists = AccountPlaylist.readAll(
+                          snapshot.data?['playlists'],
+                        );
                         return Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            Text(
-                              'Bài nhạc đã tim (${favorites.length})',
-                              style: Theme.of(context).textTheme.titleLarge,
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    'Bài nhạc đã tim (${favorites.length})',
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .titleLarge,
+                                  ),
+                                ),
+                                IconButton(
+                                  tooltip: 'Làm mới bài đã tim',
+                                  onPressed: _refreshCollections,
+                                  icon: const Icon(Icons.refresh_rounded),
+                                ),
+                              ],
                             ),
                             if (favorites.isEmpty)
                               const ListTile(
@@ -403,7 +291,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 title: Text('Chưa có bài hát yêu thích.'),
                               ),
                             for (final song in favorites)
-                              _songRow(song, favorites),
+                              accountSongTile(
+                                widget.controller,
+                                song,
+                                favorites,
+                              ),
                             const SizedBox(height: 20),
                             Text(
                               'Playlist của bạn (${playlists.length})',
@@ -415,16 +307,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 title: Text('Chưa có playlist trên web.'),
                               ),
                             for (final playlist in playlists)
-                              ListTile(
-                                contentPadding: EdgeInsets.zero,
-                                leading: const Icon(Icons.queue_music_rounded),
-                                title: Text(
-                                  playlist['name']?.toString() ?? 'Playlist',
-                                ),
-                                trailing: const Icon(
-                                  Icons.chevron_right_rounded,
-                                ),
-                                onTap: () => _openWebPlaylist(playlist),
+                              AccountPlaylistTile(
+                                controller: widget.controller,
+                                playlist: playlist,
+                                onReturn: _refreshCollections,
                               ),
                           ],
                         );

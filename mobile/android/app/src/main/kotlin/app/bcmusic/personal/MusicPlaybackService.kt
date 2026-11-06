@@ -2,6 +2,7 @@ package app.bcmusic.personal
 
 import android.app.PendingIntent
 import android.content.Intent
+import android.content.Context
 import android.os.Process
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
@@ -10,6 +11,10 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.DefaultRenderersFactory
+import androidx.media3.exoplayer.audio.AudioSink
+import androidx.media3.exoplayer.audio.DefaultAudioSink
+import androidx.media3.exoplayer.audio.TeeAudioProcessor
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
@@ -23,7 +28,14 @@ class MusicPlaybackService : MediaSessionService() {
     override fun onCreate() {
         super.onCreate()
         library = MusicLibrary.get(this)
-        val player = ExoPlayer.Builder(this).setMediaSourceFactory(DefaultMediaSourceFactory(this)
+        val renderers = object : DefaultRenderersFactory(this) {
+            override fun buildAudioSink(context: Context, enableFloatOutput: Boolean,
+                enableAudioOutputPlaybackParams: Boolean): AudioSink = DefaultAudioSink.Builder(context)
+                .setAudioProcessors(arrayOf(TeeAudioProcessor(library.spectrum)))
+                .setEnableAudioOutputPlaybackParameters(enableAudioOutputPlaybackParams)
+                .build()
+        }
+        val player = ExoPlayer.Builder(this, renderers).setMediaSourceFactory(DefaultMediaSourceFactory(this)
             .setDataSourceFactory(OfflineCache.reader(library.cache))).build()
         player.setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA)
             .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC).build(), true)
@@ -32,7 +44,12 @@ class MusicPlaybackService : MediaSessionService() {
         library.player = player
         library.applyAudioPreferences()
         player.addListener(object : Player.Listener {
-            override fun onEvents(player: Player, events: Player.Events) { library.emit() }
+            override fun onEvents(player: Player, events: Player.Events) {
+                if (events.containsAny(Player.EVENT_IS_PLAYING_CHANGED, Player.EVENT_MEDIA_ITEM_TRANSITION)) {
+                    library.recordPlayback()
+                }
+                library.emit()
+            }
             override fun onPlayerError(error: PlaybackException) {
                 library.playbackError = if (library.playingOffline)
                     "Không đọc được bản tải. Hãy xóa và tải lại bài này khi có mạng."

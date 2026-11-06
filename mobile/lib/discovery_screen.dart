@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -26,8 +27,7 @@ class DiscoveryScreen extends StatelessWidget {
     required this.onTrackAction,
     required this.onDownload,
     required this.onLibrary,
-    required this.onMotion,
-    this.playing = false,
+    this.spectrum,
     this.online = true,
     this.motion = true,
   });
@@ -36,8 +36,8 @@ class DiscoveryScreen extends StatelessWidget {
   final ValueChanged<String> onDownload;
   final DiscoverySelection onSong, onPlay;
   final VoidCallback onLibrary;
-  final ValueChanged<bool> onMotion;
-  final bool playing, online, motion;
+  final Stream<List<double>>? spectrum;
+  final bool online, motion;
 
   @override
   Widget build(BuildContext context) => RefreshIndicator(
@@ -49,9 +49,8 @@ class DiscoveryScreen extends StatelessWidget {
           sliver: SliverList.list(
             children: [
               ListeningHero(
-                playing: playing,
                 motion: motion,
-                onMotion: onMotion,
+                spectrum: spectrum,
                 onPlay: controller.sections.first.songs.isEmpty
                     ? null
                     : () => onPlay(
@@ -182,55 +181,16 @@ class DiscoveryScreen extends StatelessWidget {
   );
 }
 
-class ListeningHero extends StatefulWidget {
+class ListeningHero extends StatelessWidget {
   const ListeningHero({
     super.key,
-    required this.playing,
     required this.motion,
-    required this.onMotion,
     this.onPlay,
+    this.spectrum,
   });
-  final bool playing, motion;
+  final bool motion;
   final VoidCallback? onPlay;
-  final ValueChanged<bool> onMotion;
-  @override
-  State<ListeningHero> createState() => _ListeningHeroState();
-}
-
-class _ListeningHeroState extends State<ListeningHero>
-    with SingleTickerProviderStateMixin {
-  late final _spin = AnimationController(
-    vsync: this,
-    duration: const Duration(seconds: 12),
-  );
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    _sync();
-  }
-
-  @override
-  void didUpdateWidget(ListeningHero oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    _sync();
-  }
-
-  void _sync() {
-    if (widget.playing &&
-        widget.motion &&
-        !MediaQuery.disableAnimationsOf(context) &&
-        TickerMode.valuesOf(context).enabled) {
-      if (!_spin.isAnimating) _spin.repeat();
-    } else {
-      _spin.stop();
-    }
-  }
-
-  @override
-  void dispose() {
-    _spin.dispose();
-    super.dispose();
-  }
+  final Stream<List<double>>? spectrum;
 
   @override
   Widget build(BuildContext context) => Container(
@@ -279,42 +239,75 @@ class _ListeningHeroState extends State<ListeningHero>
             const SizedBox(height: 16),
             FilledButton.icon(
               style: playButtonStyle(context),
-              onPressed: widget.onPlay,
+              onPressed: onPlay,
               icon: const Icon(Icons.play_arrow_rounded),
               label: const Text('Phát ngay'),
             ),
           ],
         );
-        final disc = Semantics(
-          label: 'Đĩa than BCMusic',
-          child: RotationTransition(
-            turns: _spin,
-            child: CustomPaint(
-              painter: _VinylPainter(),
-              child: SizedBox.square(
-                dimension: compact ? 110 : 172,
-                child: Center(
-                  child: ClipOval(
-                    child: Image.asset(
-                      'assets/images/logo.jpg',
-                      width: compact ? 42 : 64,
-                      height: compact ? 42 : 64,
-                      fit: BoxFit.cover,
-                      excludeFromSemantics: true,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        );
         if (largeText) return copy;
         return Stack(
           children: [
             Positioned(
-              right: -24,
-              bottom: 8,
-              child: ExcludeSemantics(child: Opacity(opacity: .3, child: disc)),
+              right: 0,
+              bottom: 12,
+              child: ExcludeSemantics(
+                child: StreamBuilder<List<double>>(
+                  stream:
+                      motion &&
+                          TickerMode.valuesOf(context).enabled &&
+                          !MediaQuery.disableAnimationsOf(context)
+                      ? spectrum
+                      : null,
+                  builder: (context, snapshot) {
+                    final bands =
+                        snapshot.connectionState == ConnectionState.active &&
+                            snapshot.data?.length == 3
+                        ? snapshot.data!
+                        : const [0.0, 0.0, 0.0];
+                    return SizedBox(
+                      height: 78,
+                      width: compact ? 86 : 128,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                        children: [
+                          for (final (index, band) in const [
+                            2,
+                            1,
+                            0,
+                            0,
+                            1,
+                            2,
+                            1,
+                          ].indexed)
+                            TweenAnimationBuilder<double>(
+                              tween: Tween(
+                                end:
+                                    7 +
+                                    (bands[band] * (index.isEven ? 60 : 70)),
+                              ),
+                              duration:
+                                  motion &&
+                                      !MediaQuery.disableAnimationsOf(context)
+                                  ? const Duration(milliseconds: 110)
+                                  : Duration.zero,
+                              builder: (context, height, _) => Container(
+                                height: height,
+                                width: 5,
+                                decoration: BoxDecoration(
+                                  color: context.palette.action.withValues(
+                                    alpha: .32 + band * .09,
+                                  ),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ),
             ),
             Padding(padding: const EdgeInsets.only(right: 24), child: copy),
           ],
@@ -322,32 +315,6 @@ class _ListeningHeroState extends State<ListeningHero>
       },
     ),
   );
-}
-
-class _VinylPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final center = size.center(Offset.zero), radius = size.shortestSide / 2;
-    canvas.drawCircle(
-      center,
-      radius,
-      Paint()
-        ..shader = const RadialGradient(
-          colors: [Color(0xff080b12), Color(0xff334053), Color(0xff080b12)],
-        ).createShader(Offset.zero & size),
-    );
-    final ring = Paint()
-      ..color = Colors.white.withValues(alpha: .13)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = .6;
-    for (double r = radius - 3; r > radius * .32; r -= 3) {
-      canvas.drawCircle(center, r, ring);
-    }
-    canvas.drawCircle(center, 2, Paint()..color = Colors.white70);
-  }
-
-  @override
-  bool shouldRepaint(_VinylPainter oldDelegate) => false;
 }
 
 class FeedCarousel extends StatelessWidget {
@@ -634,118 +601,266 @@ class DataMessage extends StatelessWidget {
   );
 }
 
-class SearchScreen extends StatelessWidget {
+class SearchScreen extends StatefulWidget {
   const SearchScreen({
     super.key,
     required this.controller,
     required this.onSong,
     required this.onPlay,
+    required this.history,
+    required this.onRecordSearch,
   });
   final DiscoveryController controller;
   final DiscoverySelection onSong, onPlay;
+  final List<String> history;
+  final ValueChanged<String> onRecordSearch;
+
   @override
-  Widget build(BuildContext context) => CustomScrollView(
-    slivers: [
-      SliverPadding(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
-        sliver: SliverList.list(
-          children: [
-            const Text(
-              'Tìm kiếm',
-              style: TextStyle(
-                fontSize: 27,
-                fontWeight: FontWeight.w800,
-                letterSpacing: -.8,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Tìm giai điệu của riêng bạn.',
-              style: TextStyle(color: context.palette.muted),
-            ),
-            const SizedBox(height: 22),
-            TextField(
-              textInputAction: TextInputAction.search,
-              maxLength: 200,
-              onSubmitted: controller.search,
-              decoration: const InputDecoration(
-                counterText: '',
-                labelText: 'Bài hát hoặc nghệ sĩ',
-                hintText: 'Tìm bài hát, nghệ sĩ…',
-                prefixIcon: Icon(Icons.search_rounded),
-              ),
-            ),
-            const SizedBox(height: 22),
-            if (controller.searching)
-              const Center(
-                child: Padding(
-                  padding: EdgeInsets.all(30),
-                  child: CircularProgressIndicator(),
+  State<SearchScreen> createState() => _SearchScreenState();
+}
+
+class _SearchScreenState extends State<SearchScreen> {
+  final _input = TextEditingController();
+  Timer? _debounce;
+  int _request = 0;
+  List<String> _suggestions = const [];
+  DiscoveryController get controller => widget.controller;
+
+  void _type(String value) {
+    final request = ++_request;
+    _debounce?.cancel();
+    setState(() => _suggestions = const []);
+    final query = value.trim();
+    final repository = controller.repository;
+    if (query.length < 2 ||
+        query.length > 120 ||
+        repository is! SearchSuggestions) {
+      return;
+    }
+    _debounce = Timer(const Duration(milliseconds: 320), () async {
+      try {
+        final suggestions = await (repository as SearchSuggestions).suggestions(
+          query,
+        );
+        if (mounted && request == _request) {
+          setState(() => _suggestions = suggestions);
+        }
+      } on Exception {
+        // History remains available when suggestions cannot load.
+      }
+    });
+  }
+
+  void _submit(String value) {
+    final query = value.trim();
+    _request++;
+    _debounce?.cancel();
+    _input.value = TextEditingValue(
+      text: query,
+      selection: TextSelection.collapsed(offset: query.length),
+    );
+    setState(() => _suggestions = const []);
+    if (query.isNotEmpty) widget.onRecordSearch(query);
+    FocusScope.of(context).unfocus();
+    controller.search(query);
+  }
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    _input.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final query = _input.text.trim();
+    final normalized = query.toLowerCase();
+    final showSuggestions = query.isEmpty || query != controller.query;
+    final history = widget.history
+        .where((term) => term.toLowerCase().contains(normalized))
+        .take(6);
+    final matchingTitles = {
+      for (final section in controller.sections)
+        for (final song in section.songs)
+          if (song.title.toLowerCase().contains(normalized)) song.title,
+    };
+    final suggestions = query.isEmpty
+        ? musicGenres.take(5).map((genre) => genre.label)
+        : (_suggestions.isEmpty ? matchingTitles : _suggestions)
+              .where(
+                (term) => !history.any(
+                  (previous) => previous.toLowerCase() == term.toLowerCase(),
                 ),
               )
-            else if (controller.searchError != null)
-              DataMessage(
-                message: controller.searchError!,
-                onRetry: () => controller.search(controller.query),
-              )
-            else if (controller.searchResults.isEmpty)
-              DataMessage(
-                message: controller.query.isEmpty
-                    ? 'Nhập từ khóa rồi nhấn tìm kiếm trên bàn phím.'
-                    : 'Chưa có kết quả phù hợp. Thử một từ khóa khác.',
-              )
-            else ...[
-              Text(
-                'Kết quả cho “${controller.query}”',
-                style: const TextStyle(fontWeight: FontWeight.w600),
+              .take(6);
+    return CustomScrollView(
+      slivers: [
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
+          sliver: SliverList.list(
+            children: [
+              const Text(
+                'Tìm kiếm',
+                style: TextStyle(
+                  fontSize: 27,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: -.8,
+                ),
               ),
-              const SizedBox(height: 14),
-              for (final song in controller.searchResults)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: Material(
-                    color: context.palette.surface,
-                    borderRadius: BorderRadius.circular(16),
-                    child: ListTile(
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 8,
-                      ),
-                      leading: SongImage(song: song, size: 52),
-                      title: Text(
-                        song.title,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
+              const SizedBox(height: 8),
+              Text(
+                'Tìm giai điệu của riêng bạn.',
+                style: TextStyle(color: context.palette.muted),
+              ),
+              const SizedBox(height: 22),
+              TextField(
+                controller: _input,
+                textInputAction: TextInputAction.search,
+                maxLength: 200,
+                onChanged: _type,
+                onSubmitted: _submit,
+                decoration: InputDecoration(
+                  counterText: '',
+                  labelText: 'Bài hát',
+                  hintText: 'Tìm bài hát…',
+                  prefixIcon: const Icon(Icons.search_rounded),
+                  suffixIcon: query.isEmpty
+                      ? null
+                      : IconButton(
+                          tooltip: 'Xóa từ khóa',
+                          icon: const Icon(Icons.close_rounded),
+                          onPressed: () => _submit(''),
                         ),
-                      ),
-                      subtitle: Text(
-                        '${song.artist} · ${formatTime(song.durationMs)}',
+                ),
+              ),
+              const SizedBox(height: 22),
+              if (showSuggestions) ...[
+                if (history.isNotEmpty) ...[
+                  const Text(
+                    'Lịch sử tìm kiếm',
+                    style: TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  for (final term in history)
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: const Icon(Icons.history_rounded),
+                      title: Text(
+                        term,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: context.palette.muted,
-                        ),
                       ),
-                      onTap: () => onSong(song, controller.searchResults),
-                      trailing: IconButton(
-                        tooltip: 'Phát ${song.title}',
-                        onPressed: () => onPlay(song, controller.searchResults),
-                        icon: Icon(
-                          Icons.play_arrow_rounded,
-                          color: context.palette.text,
+                      onTap: () => _submit(term),
+                    ),
+                  const SizedBox(height: 12),
+                ],
+                if (suggestions.isNotEmpty) ...[
+                  const Text(
+                    'Gợi ý tìm kiếm',
+                    style: TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  if (query.isEmpty)
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 4,
+                      children: [
+                        for (final term in suggestions)
+                          ActionChip(
+                            label: Text(term),
+                            onPressed: () => _submit(term),
+                          ),
+                      ],
+                    )
+                  else
+                    for (final term in suggestions)
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: const Icon(Icons.search_rounded),
+                        title: Text(
+                          term,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        onTap: () => _submit(term),
+                      ),
+                ],
+                if (history.isEmpty && suggestions.isEmpty)
+                  const DataMessage(
+                    message: 'Nhấn tìm kiếm trên bàn phím để xem kết quả.',
+                  ),
+              ] else if (controller.searching)
+                const Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(30),
+                    child: CircularProgressIndicator(),
+                  ),
+                )
+              else if (controller.searchError != null)
+                DataMessage(
+                  message: controller.searchError!,
+                  onRetry: () => controller.search(controller.query),
+                )
+              else if (controller.searchResults.isEmpty)
+                DataMessage(
+                  message: controller.query.isEmpty
+                      ? 'Nhập từ khóa rồi nhấn tìm kiếm trên bàn phím.'
+                      : 'Chưa có kết quả phù hợp. Thử một từ khóa khác.',
+                )
+              else ...[
+                Text(
+                  'Kết quả cho “${controller.query}”',
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 14),
+                for (final song in controller.searchResults)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Material(
+                      color: context.palette.surface,
+                      borderRadius: BorderRadius.circular(16),
+                      child: ListTile(
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 8,
+                        ),
+                        leading: SongImage(song: song, size: 52),
+                        title: Text(
+                          song.title,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        subtitle: Text(
+                          '${song.artist} · ${formatTime(song.durationMs)}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: context.palette.muted,
+                          ),
+                        ),
+                        onTap: () =>
+                            widget.onSong(song, controller.searchResults),
+                        trailing: IconButton(
+                          tooltip: 'Phát ${song.title}',
+                          onPressed: () =>
+                              widget.onPlay(song, controller.searchResults),
+                          icon: Icon(
+                            Icons.play_arrow_rounded,
+                            color: context.palette.text,
+                          ),
                         ),
                       ),
                     ),
                   ),
-                ),
+              ],
             ],
-          ],
+          ),
         ),
-      ),
-    ],
-  );
+      ],
+    );
+  }
 }

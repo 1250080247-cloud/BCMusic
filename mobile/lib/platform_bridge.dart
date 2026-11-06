@@ -32,6 +32,12 @@ abstract class MusicPlatform {
 
 class AndroidMusicPlatform implements MusicPlatform {
   static const _methods = MethodChannel('app.bcmusic.personal/methods');
+  static const _spectrum = EventChannel('app.bcmusic.personal/spectrum');
+  late final Stream<List<double>> spectrum = _spectrum
+      .receiveBroadcastStream()
+      .map((event) => (event as List).cast<double>());
+  Future<void> recordSearch(String query) =>
+      _methods.invokeMethod('recordSearch', {'query': query});
   Future<void> setRepeatOne(bool enabled) =>
       _methods.invokeMethod('setRepeatOne', {'enabled': enabled});
 
@@ -44,6 +50,17 @@ class AndroidMusicPlatform implements MusicPlatform {
 
   Future<String?> getProfileCollections() =>
       _methods.invokeMethod<String>('getProfileCollections');
+  Future<List<String>> getFavoriteIds() async =>
+      await _methods.invokeListMethod<String>('getFavoriteIds') ?? [];
+  Future<void> setFavorite(
+    String accountId,
+    Map<String, String> song,
+    bool liked,
+  ) => _methods.invokeMethod('setFavorite', {
+    'accountId': accountId,
+    'song': song,
+    'liked': liked,
+  });
   Future<void> saveWebPlaylistSong(
     Map<String, String> song, {
     String? playlistId,

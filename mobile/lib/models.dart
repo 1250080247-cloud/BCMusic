@@ -187,6 +187,8 @@ class LibrarySnapshot {
     this.initialized = true,
     this.networkAvailable = true,
     this.playlists = const [],
+    this.searchHistory = const [],
+    this.listeningHistory = const [],
     this.playlistError,
     this.preferences = const AppPreferences(),
     this.account,
@@ -199,6 +201,8 @@ class LibrarySnapshot {
   final bool initialized;
   final bool networkAvailable;
   final List<LocalPlaylist> playlists;
+  final List<String> searchHistory;
+  final List<OfflineTrack> listeningHistory;
   final String? playlistError;
   final AppPreferences preferences;
   final AccountProfile? account;
@@ -225,6 +229,14 @@ class LibrarySnapshot {
         )
         .toList(),
     playlistError: map['playlistError'] as String?,
+    searchHistory: ((map['searchHistory'] as List?) ?? [])
+        .whereType<String>()
+        .toList(),
+    listeningHistory: [
+      for (final row
+          in ((map['listeningHistory'] as List?) ?? []).whereType<Map>())
+        OfflineTrack.fromMap(Map<Object?, Object?>.from(row)),
+    ],
     preferences: AppPreferences.fromMap(
       Map<Object?, Object?>.from((map['preferences'] as Map?) ?? {}),
     ),
@@ -267,6 +279,9 @@ class AccountProfile {
   );
 }
 
+String playbackSpeedLabel(double speed) =>
+    '${speed == speed.toInt() ? speed.toInt() : speed}×';
+
 class AppPreferences {
   const AppPreferences({
     this.light = false,
@@ -278,7 +293,7 @@ class AppPreferences {
   final bool light, motion;
   final int volume;
   final double speed;
-  static const speeds = [0.75, 1.0, 1.25, 1.5];
+  static const speeds = [0.75, 1.0, 1.25, 1.5, 2.0];
 
   factory AppPreferences.fromMap(Map<Object?, Object?> data) {
     final speed = (data['speed'] as num?)?.toDouble();

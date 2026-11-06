@@ -36,6 +36,8 @@ class MusicLibrary private constructor(val context: Context) {
     val resolver = TrackResolver()
     val playlists = PlaylistStore(context)
     val preferences = PreferenceStore(context)
+    internal val recent = RecentActivity(context)
+    internal val spectrum = PlaybackSpectrum()
     internal val account = AccountClient(SecureAccountStorage(context))
     var accountError: String? = null
     var playlistError: String? = null
@@ -136,14 +138,12 @@ class MusicLibrary private constructor(val context: Context) {
         val item = p?.currentMediaItem
         val current = item?.mediaId
         val offline = playingOffline
-        val cached = records[current]?.takeIf { offline && it.state == Download.STATE_COMPLETED }
-        val currentTrack = cached?.let(::trackMap) ?: onlineTrack?.takeIf { it.metadata.id == current }?.let {
-            it.metadata.toMap() + mapOf("status" to "streaming", "artworkUrl" to it.artworkUrl)
-        }
+        val currentTrack = playbackTrack(current, offline)
         return mapOf("initialized" to (ready.isCompleted && !ready.isCancelled),
             "networkAvailable" to networkAvailable(), "playlists" to playlists.items.map { it.toMap() },
             "playlistError" to playlistError, "preferences" to preferences.current.toMap(),
             "account" to account.profile?.toMap(), "accountError" to accountError,
+            "searchHistory" to recent.searches, "listeningHistory" to recent.tracks,
             "tracks" to records.values.sortedByDescending { it.startTimeMs }.map(::trackMap),
             "incomingText" to incomingText, "shareSequence" to shareSequence,
             "playback" to mapOf("trackId" to current, "track" to currentTrack,
@@ -151,6 +151,18 @@ class MusicLibrary private constructor(val context: Context) {
                 "hasPrevious" to (p?.hasPreviousMediaItem() ?: false),
                 "isPlaying" to (p?.isPlaying ?: false), "ended" to (p?.playbackState == androidx.media3.common.Player.STATE_ENDED), "positionMs" to (p?.currentPosition ?: 0),
                 "durationMs" to ((p?.duration ?: 0).coerceAtLeast(0)), "error" to playbackError))
+    }
+
+    private fun playbackTrack(id: String?, offline: Boolean): Map<String, Any?>? {
+        val cached = records[id]?.takeIf { offline && it.state == Download.STATE_COMPLETED }
+        return cached?.let(::trackMap) ?: onlineTrack?.takeIf { it.metadata.id == id }?.let {
+            it.metadata.toMap() + mapOf("status" to "streaming", "artworkUrl" to it.artworkUrl)
+        }
+    }
+
+    fun recordPlayback() {
+        val current = player?.takeIf { it.isPlaying }?.currentMediaItem?.mediaId ?: return
+        playbackTrack(current, playingOffline)?.let(recent::played)
     }
 
     fun networkAvailable(): Boolean {
