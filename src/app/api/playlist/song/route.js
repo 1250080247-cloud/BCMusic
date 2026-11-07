@@ -20,7 +20,7 @@ export async function POST(request) {
 
     const song = body?.song;
     const songId = boundedText(song?.id, LIMITS.id);
-    const title = boundedText(song?.title, LIMITS.text);
+    const title = boundedText(song?.title, LIMITS.title);
     if (!isObjectIdString(body?.playlistId) || !songId || !title) {
       return NextResponse.json(
         { success: false, message: 'Missing required fields.' },

@@ -1,7 +1,9 @@
 // Pure request-body and field helpers shared by API routes.
 
+// Keep in sync with the Android app (mobile/android/.../AccountClient.kt), which validates titles up to 500.
 export const LIMITS = {
   text: 300,
+  title: 500,
   id: 128,
   name: 100,
   lyrics: 80000,

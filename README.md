@@ -34,7 +34,7 @@ BCMusic là ứng dụng web nghe nhạc từ YouTube và SoundCloud. Người d
 
 ## Yêu cầu
 
-- Node.js 20 trở lên và npm.
+- Node.js 22 trở lên và npm (đã kiểm thử với Node 22.23 và 24.22; `npm test` dùng flag `--experimental-test-isolation`).
 - Cơ sở dữ liệu MongoDB (Atlas hoặc tự host).
 - YouTube Data API v3 key để tìm kiếm, khám phá và gợi ý.
 - (Tùy chọn) Google OAuth client để đăng nhập bằng Google.

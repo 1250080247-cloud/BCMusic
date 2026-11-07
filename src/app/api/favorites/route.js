@@ -51,7 +51,7 @@ export async function POST(request) {
 
     const song = body?.song;
     const songId = boundedText(song?.id, LIMITS.id);
-    const title = boundedText(song?.title, LIMITS.text);
+    const title = boundedText(song?.title, LIMITS.title);
     if (!songId || !title) {
       return NextResponse.json({ success: false, message: 'Missing song info.' }, { status: 400 });
     }

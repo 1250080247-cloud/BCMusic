@@ -31,13 +31,19 @@ const categories = [
   { key: "chineseMusic", query: "nhạc trung douyin" },
   { key: "lofi", query: "lofi chill vietnamese" },
   { key: "edm", query: "edm ncs" },
-  { key: "acoustic", query: "nhạc acoustic nhẹ nhàng" },
+  { key: "acoustic", query: "acoustic nhẹ nhàng" },
   { key: "kpop", query: "kpop hit" },
   { key: "rapViet", query: "rap việt hot" },
   { key: "rnb", query: "rnb soul" },
   { key: "piano", query: "piano instrumental relaxing" },
   { key: "popHits", query: "pop hits 2024 2025" },
 ];
+
+// Queries from links created before a category query was aligned with the Android app.
+const legacyQueries = {
+  "tiktok remix ncs": "tiktok remix",
+  "nhạc acoustic nhẹ nhàng": "acoustic nhẹ nhàng",
+};
 
 export default async function Home({ searchParams }) {
   const resolvedParams = await searchParams;
@@ -46,7 +52,9 @@ export default async function Home({ searchParams }) {
   const searchParam = Array.isArray(resolvedParams.search) ? resolvedParams.search[0] : resolvedParams.search;
 
   const currentSearch = searchParam ? searchParam.trim() : "";
-  const currentQuery = genreParam === 'tiktok remix ncs' ? categories[0].query : genreParam || categories[0].query;
+  const currentQuery = genreParam
+    ? (Object.hasOwn(legacyQueries, genreParam) ? legacyQueries[genreParam] : genreParam)
+    : categories[0].query;
   const genreKey = categories.find(category => category.query === currentQuery)?.key;
   const currentToken = tokenParam || "";
 

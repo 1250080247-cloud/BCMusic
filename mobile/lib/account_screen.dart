@@ -143,10 +143,16 @@ class _AccountScreenState extends State<AccountScreen> {
                 autocorrect: false,
                 textInputAction: TextInputAction.next,
                 autofillHints: const [AutofillHints.username],
-                validator: (value) =>
-                    (value?.trim().length ?? 0) < (_register ? 3 : 1)
-                    ? 'Nhập tên đăng nhập hợp lệ.'
-                    : null,
+                validator: (value) {
+                  final name = value?.trim().toLowerCase() ?? '';
+                  // Same rule as /api/auth/register: 3-30 chars of [a-z0-9_.].
+                  if (_register) {
+                    return RegExp(r'^[a-z0-9_.]{3,30}$').hasMatch(name)
+                        ? null
+                        : 'Tên đăng nhập 3-30 ký tự: chữ thường không dấu, số, _ hoặc .';
+                  }
+                  return name.isEmpty ? 'Nhập tên đăng nhập hợp lệ.' : null;
+                },
                 decoration: const InputDecoration(
                   labelText: 'Tên đăng nhập',
                   counterText: '',

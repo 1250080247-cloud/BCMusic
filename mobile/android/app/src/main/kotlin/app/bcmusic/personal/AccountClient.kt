@@ -93,6 +93,7 @@ internal class AccountClient(
     private val origin = "https://bc-music-gilt.vercel.app/".toHttpUrl()
     private val tokenPattern = Regex("^(?:__Secure-)?next-auth\\.session-token(?:\\.\\d+)?$")
     private val proofPattern = Regex("^[A-Za-z0-9_-]{43}$")
+    private val usernamePattern = Regex("^[a-z0-9_.]{3,30}$")
 
     @Synchronized fun restore() {
         val saved = storage.read("session") ?: return
@@ -106,9 +107,13 @@ internal class AccountClient(
     @Synchronized fun signIn(username: String, password: String) = authenticate(username, password)
 
     @Synchronized fun register(username: String, password: String, displayName: String) {
-        val normalized = username.trim()
-        if (normalized.length !in 3..30 || password.length < 6 || password.toByteArray().size > 72 || displayName.trim().length > 50) {
-            throw SourceFailure("INPUT", "Kiểm tra tên đăng nhập, tên hiển thị và mật khẩu từ 6 ký tự (tối đa 72 byte).")
+        // Same rule as /api/auth/register: the server lowercases the name and accepts only [a-z0-9_.].
+        val normalized = username.trim().lowercase()
+        if (!usernamePattern.matches(normalized)) {
+            throw SourceFailure("INPUT", "Tên đăng nhập phải từ 3-30 ký tự: chữ thường không dấu, số, _ hoặc .")
+        }
+        if (password.length < 6 || password.toByteArray().size > 72 || displayName.trim().length > 50) {
+            throw SourceFailure("INPUT", "Kiểm tra tên hiển thị và mật khẩu từ 6 ký tự (tối đa 72 byte).")
         }
         val body = JSONObject().put("username", normalized).put("password", password).put("displayName", displayName.trim())
         val result = request(AccountCookies(), "/api/auth/register", jsonBody(body))
@@ -254,7 +259,8 @@ internal class AccountClient(
         val id = song.optString("id")
         val title = song.optString("title").trim()
         val source = SourceUrl.parse(song.optString("sourceUrl"))
-        if (id.length !in 1..512 || title.length !in 1..500)
+        // Limits match /api/playlist/song (id ≤ 128, title ≤ 500).
+        if (id.length !in 1..128 || title.length !in 1..500)
             throw SourceFailure("INPUT", "Thông tin bài hát không hợp lệ.")
         val name = playlistName.orEmpty().trim()
         if (playlistId == null && name.length !in 1..80)

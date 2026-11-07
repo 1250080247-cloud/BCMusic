@@ -29,6 +29,16 @@ for (const genre of ['tiktok remix', 'nhạc trung douyin', 'lofi chill vietname
   });
 }
 
+test('the acoustic category uses the Android app query, and the previous web link maps to it', async () => {
+  for (const genre of ['acoustic nhẹ nhàng', 'nhạc acoustic nhẹ nhàng']) {
+    const requests = await homeFixture({ genre });
+    assert.equal(requests.length, 3);
+    // The trending section appends " trending" to the same base query.
+    assert.ok(requests.every(request => request.query.startsWith('acoustic nhẹ nhàng')));
+    assert.ok(requests.every(request => !request.query.includes('nhạc acoustic')));
+  }
+});
+
 test('default and old TikTok category links no longer inject the unrelated NCS query', async () => {
   for (const parameters of [{}, { genre: 'tiktok remix ncs' }]) {
     const requests = await homeFixture(parameters);
