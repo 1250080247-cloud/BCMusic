@@ -378,7 +378,7 @@ class _AppShellState extends State<AppShell> {
                   showAboutDialog(
                     context: context,
                     applicationName: 'BCMusic',
-                    applicationVersion: '1.2.5',
+                    applicationVersion: '1.2.6',
                   );
                 }
               },
