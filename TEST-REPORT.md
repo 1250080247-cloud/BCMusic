@@ -1,7 +1,7 @@
 # BÁO CÁO KIỂM THỬ VÀ NGHIỆM THU TÍNH NĂNG & HOÀN THIỆN HỆ THỐNG (TEST REPORT)
 
 **Dự án:** BCMusic Personal App & Web Ecosystem<br>
-**Nền tảng:** Android 1.2.7 (VersionCode: 12) & Next.js 16.4.3 (Turbopack)<br>
+**Nền tảng:** Android 1.2.7 (VersionCode: 2012) & Next.js 16.4.3 (Turbopack)<br>
 **Thời gian cập nhật:** 10/11/2026<br>
 **Trạng thái nghiệm thu:** ✅ **Pass toàn bộ bài test được bật; 2 test live-source được skip theo cấu hình.**<br>
 - **Flutter Tests:** **65/65 passed** (100%)
@@ -89,7 +89,7 @@
 | **Không sửa `SourceNetwork.kt`** | File giữ nguyên 100%, không nằm trong git diff. | ✅ TUÂN THỦ |
 | **Crossfade playback** | `MusicPlaybackService.kt` được sửa có chủ đích để quản lý fade theo vòng đời phát nền. | ✅ ĐÚNG PHẠM VI |
 | **Không đổi `applicationId` / package** | Giữ nguyên `app.bcmusic.personal`. | ✅ TUÂN THỦ TUYỆT ĐỐI |
-| **Định danh bản phát hành** | `applicationId` giữ nguyên; `versionCode = 12`, `versionName = 1.2.7`. | ✅ CẬP NHẬT |
+| **Định danh bản phát hành** | `applicationId` giữ nguyên; `versionCode = 2012`, `versionName = 1.2.7`. | ✅ CẬP NHẬT |
 | **Không sửa keystore / signing config** | Giữ nguyên cấu hình release. | ✅ TUÂN THỦ TUYỆT ĐỐI |
 | **Không thêm dependency bên ngoài** | Giữ nguyên dependencies hiện có của Gradle, Flutter, NPM. | ✅ TUÂN THỦ TUYỆT ĐỐI |
 | **Bảo toàn SharedPreferences cũ** | Dữ liệu `"bcmusic-preferences"`, `"bcmusic-playlists"` nguyên vẹn. | ✅ TUÂN THỦ TUYỆT ĐỐI |
