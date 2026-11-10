@@ -54,12 +54,14 @@ export const useSettingsStore = create(
       language: 'vi',
       volume: 80,
       playbackRate: 1,
+      crossfade: false,
       searchHistory: [],
       setTheme: (theme) => set({ theme }),
       toggleTheme: () => set({ theme: get().theme === 'dark' ? 'light' : 'dark' }),
       setLanguage: (language) => set({ language }),
       setVolume: (volume) => set({ volume: Math.min(100, Math.max(0, Number(volume))) }),
       setPlaybackRate: (playbackRate) => set({ playbackRate: Number(playbackRate) }),
+      setCrossfade: (crossfade) => set({ crossfade: Boolean(crossfade) }),
       addSearchHistory: (term) => {
         const trimmed = term.trim();
         if (!trimmed) return;
@@ -78,6 +80,7 @@ export const useSettingsStore = create(
         language: state.language,
         volume: state.volume,
         playbackRate: state.playbackRate,
+        crossfade: state.crossfade,
         searchHistory: state.searchHistory,
       }),
     }

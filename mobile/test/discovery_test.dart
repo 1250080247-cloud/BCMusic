@@ -72,4 +72,11 @@ void main() {
       controller.dispose();
     },
   );
+
+  test('WebsiteDiscoveryRepository uses defaultWebsiteHost and allows custom host', () {
+    expect(WebsiteDiscoveryRepository.defaultWebsiteHost, 'bc-music-gilt.vercel.app');
+    final custom = WebsiteDiscoveryRepository(host: 'staging.bcmusic.test');
+    expect(custom.host, 'staging.bcmusic.test');
+    custom.dispose();
+  });
 }

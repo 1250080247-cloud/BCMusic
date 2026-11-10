@@ -10,10 +10,20 @@ abstract class MusicPlatform {
   Future<void> retry(String id);
   Future<void> remove(String id);
   Future<void> play(String id, {List<String>? queueIds});
-  Future<void> playSource(String url);
-  Future<void> createPlaylist(String name, {String? trackId});
+  Future<void> playSource(String url, {bool autoTransition = false});
+  Future<void> createPlaylist(
+    String name, {
+    String? trackId,
+    String? url,
+    bool enqueueIfMissing = false,
+  });
   Future<void> deletePlaylist(String playlistId);
   Future<void> addToPlaylist(String playlistId, String id);
+  Future<void> enqueueAndAddToPlaylist(
+    String playlistId,
+    String id, {
+    String? url,
+  });
   Future<void> removeFromPlaylist(String playlistId, String id);
   Future<void> togglePlay();
   Future<void> seek(int positionMs);
@@ -28,6 +38,15 @@ abstract class MusicPlatform {
   Future<void> startGoogle();
   Future<void> signOut();
   Future<void> clearAccountError();
+  Future<void> saveLyrics(String trackId, String data);
+  Future<String?> getLyrics(String trackId);
+  Future<void> pause();
+  Future<void> setSleepTimer(int? minutes, {bool atEndOfTrack = false});
+  Future<void> cancelSleepTimer();
+  Future<void> setRepeatMode(String mode);
+  Future<void> setShuffle(bool enabled);
+  Future<void> removeQueueItem(int index);
+  Future<void> reorderQueue(int oldIndex, int newIndex);
 }
 
 class AndroidMusicPlatform implements MusicPlatform {
@@ -40,6 +59,21 @@ class AndroidMusicPlatform implements MusicPlatform {
       _methods.invokeMethod('recordSearch', {'query': query});
   Future<void> setRepeatOne(bool enabled) =>
       _methods.invokeMethod('setRepeatOne', {'enabled': enabled});
+  @override
+  Future<void> setRepeatMode(String mode) =>
+      _methods.invokeMethod('setRepeatMode', {'mode': mode});
+  @override
+  Future<void> setShuffle(bool enabled) =>
+      _methods.invokeMethod('setShuffle', {'enabled': enabled});
+  @override
+  Future<void> removeQueueItem(int index) =>
+      _methods.invokeMethod('removeQueueItem', {'index': index});
+  @override
+  Future<void> reorderQueue(int oldIndex, int newIndex) =>
+      _methods.invokeMethod('reorderQueue', {
+        'oldIndex': oldIndex,
+        'newIndex': newIndex,
+      });
 
   Future<bool> exportCoverMp4(String url, String title) async =>
       await _methods.invokeMethod<bool>('exportCoverMp4', {
@@ -117,17 +151,39 @@ class AndroidMusicPlatform implements MusicPlatform {
   Future<void> play(String id, {List<String>? queueIds}) =>
       _methods.invokeMethod('play', {'id': id, 'queueIds': queueIds});
   @override
-  Future<void> playSource(String url) =>
-      _methods.invokeMethod('playSource', {'url': url});
+  Future<void> playSource(String url, {bool autoTransition = false}) =>
+      _methods.invokeMethod('playSource', {
+        'url': url,
+        'autoTransition': autoTransition,
+      });
   @override
-  Future<void> createPlaylist(String name, {String? trackId}) => _methods
-      .invokeMethod('createPlaylist', {'name': name, 'trackId': trackId});
+  Future<void> createPlaylist(
+    String name, {
+    String? trackId,
+    String? url,
+    bool enqueueIfMissing = false,
+  }) => _methods.invokeMethod('createPlaylist', {
+    'name': name,
+    'trackId': trackId,
+    'url': url,
+    'enqueueIfMissing': enqueueIfMissing,
+  });
   @override
   Future<void> deletePlaylist(String playlistId) =>
       _methods.invokeMethod('deletePlaylist', {'playlistId': playlistId});
   @override
   Future<void> addToPlaylist(String playlistId, String id) => _methods
       .invokeMethod('addToPlaylist', {'playlistId': playlistId, 'id': id});
+  @override
+  Future<void> enqueueAndAddToPlaylist(
+    String playlistId,
+    String id, {
+    String? url,
+  }) => _methods.invokeMethod('enqueueAndAddToPlaylist', {
+    'playlistId': playlistId,
+    'id': id,
+    'url': url,
+  });
   @override
   Future<void> removeFromPlaylist(String playlistId, String id) => _methods
       .invokeMethod('removeFromPlaylist', {'playlistId': playlistId, 'id': id});
@@ -161,4 +217,20 @@ class AndroidMusicPlatform implements MusicPlatform {
   @override
   Future<void> clearAccountError() =>
       _methods.invokeMethod('clearAccountError');
+  @override
+  Future<void> saveLyrics(String trackId, String data) =>
+      _methods.invokeMethod('saveLyrics', {'trackId': trackId, 'data': data});
+  @override
+  Future<String?> getLyrics(String trackId) =>
+      _methods.invokeMethod<String>('getLyrics', {'trackId': trackId});
+  @override
+  Future<void> pause() => _methods.invokeMethod('pause');
+  @override
+  Future<void> setSleepTimer(int? minutes, {bool atEndOfTrack = false}) =>
+      _methods.invokeMethod('setSleepTimer', {
+        'minutes': minutes,
+        'atEndOfTrack': atEndOfTrack,
+      });
+  @override
+  Future<void> cancelSleepTimer() => _methods.invokeMethod('cancelSleepTimer');
 }

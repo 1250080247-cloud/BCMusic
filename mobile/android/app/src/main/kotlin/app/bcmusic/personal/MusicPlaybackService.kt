@@ -44,13 +44,44 @@ class MusicPlaybackService : MediaSessionService() {
         library.player = player
         library.applyAudioPreferences()
         player.addListener(object : Player.Listener {
-            override fun onEvents(player: Player, events: Player.Events) {
-                if (events.containsAny(Player.EVENT_IS_PLAYING_CHANGED, Player.EVENT_MEDIA_ITEM_TRANSITION)) {
-                    library.recordPlayback()
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                if (!isPlaying) {
+                    library.cancelFade()
+                }
+                library.recordPlayback()
+                library.emit()
+            }
+
+            override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                if (!playWhenReady) {
+                    library.cancelFade()
                 }
                 library.emit()
             }
+
+            override fun onPositionDiscontinuity(
+                oldPosition: Player.PositionInfo,
+                newPosition: Player.PositionInfo,
+                reason: Int
+            ) {
+                if (reason == Player.DISCONTINUITY_REASON_SEEK || reason == Player.DISCONTINUITY_REASON_SEEK_ADJUSTMENT) {
+                    library.cancelFade()
+                }
+                library.emit()
+            }
+
+            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                library.recordPlayback()
+                if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO) {
+                    library.startFadeIn()
+                } else {
+                    library.cancelFade()
+                }
+                library.emit()
+            }
+
             override fun onPlayerError(error: PlaybackException) {
+                library.cancelFade()
                 library.playbackError = if (library.playingOffline)
                     "Không đọc được bản tải. Hãy xóa và tải lại bài này khi có mạng."
                     else "Không phát được nguồn trực tuyến. Kiểm tra mạng hoặc thử bài khác."
@@ -60,6 +91,29 @@ class MusicPlaybackService : MediaSessionService() {
         session = MediaSession.Builder(this, player).setSessionActivity(PendingIntent.getActivity(this,
             0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT))
             .setCallback(object : MediaSession.Callback {
+                @Deprecated("Deprecated in Java", ReplaceWith("super.onPlayerCommandRequest(session, controller, playerCommand)"))
+                @Suppress("DEPRECATION")
+                override fun onPlayerCommandRequest(
+                    session: MediaSession,
+                    controller: MediaSession.ControllerInfo,
+                    playerCommand: Int
+                ): Int {
+                    if (playerCommand in listOf(
+                        Player.COMMAND_PLAY_PAUSE,
+                        Player.COMMAND_SEEK_TO_NEXT,
+                        Player.COMMAND_SEEK_TO_PREVIOUS,
+                        Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM,
+                        Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM,
+                        Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM,
+                        Player.COMMAND_SEEK_BACK,
+                        Player.COMMAND_SEEK_FORWARD,
+                        Player.COMMAND_STOP
+                    )) {
+                        library.cancelFade()
+                    }
+                    return super.onPlayerCommandRequest(session, controller, playerCommand)
+                }
+
                 override fun onConnect(session: MediaSession, controller: MediaSession.ControllerInfo): MediaSession.ConnectionResult {
                     val result = super.onConnect(session, controller)
                     if (controller.uid == Process.myUid()) return result

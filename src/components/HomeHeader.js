@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { Clock, Search } from 'lucide-react';
@@ -10,8 +11,7 @@ import MusicScene from '@/components/MusicScene';
 import { getDictionary } from '@/lib/i18n';
 import { useSettingsStore } from '@/lib/store';
 
-function getGreeting(language) {
-  const hour = new Date().getHours();
+function getGreeting(language, hour = 9) {
   if (language === 'vi') {
     if (hour < 12) return 'Chào buổi sáng';
     if (hour < 18) return 'Chào buổi chiều';
@@ -23,9 +23,16 @@ function getGreeting(language) {
 }
 
 export default function HomeHeader({ categories, currentQuery, currentSearch }) {
-  const language = useSettingsStore((state) => state.language);
+  const [mounted, setMounted] = useState(false);
+  const storeLanguage = useSettingsStore((state) => state.language);
+  const language = mounted ? storeLanguage : 'vi';
   const t = getDictionary(language);
-  const greeting = getGreeting(language);
+  const [greeting, setGreeting] = useState(() => getGreeting('vi', 9));
+
+  useEffect(() => {
+    setMounted(true);
+    setGreeting(getGreeting(storeLanguage, new Date().getHours()));
+  }, [storeLanguage]);
 
   return (
     <header className="home-header">

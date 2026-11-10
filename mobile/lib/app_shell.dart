@@ -200,39 +200,12 @@ class _AppShellState extends State<AppShell> {
       case TrackAction.share:
         await shareSong(context, _music, item.url);
       case TrackAction.playlist:
-        final ready = _music.tracks
-            .where((track) => track.isReady && track.sourceUrl == item.url)
-            .firstOrNull;
-        if (ready != null) {
-          await _addToPlaylist(ready);
-          return;
-        }
-        final platform = _music.platform;
-        if (platform is AndroidMusicPlatform &&
-            _music.snapshot.account != null) {
-          await pickWebPlaylist(context, platform, song.id, item);
-          return;
-        }
-        final download = await showDialog<bool>(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: const Text('Thêm vào danh sách phát'),
-            content: const Text(
-              'Tải bài vào Thư viện trước để thêm vào playlist offline.',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child: const Text('Để sau'),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.pop(context, true),
-                child: const Text('Mở Thư viện'),
-              ),
-            ],
-          ),
+        await promptAddToPlaylist(
+          context,
+          _music,
+          song: item,
+          songId: song.id,
         );
-        if (mounted && download == true) _downloadSong(item.url);
       case TrackAction.queue:
         enqueueSong(context, _music, item);
       case TrackAction.info:
@@ -313,7 +286,7 @@ class _AppShellState extends State<AppShell> {
                       ),
                     ),
                     Text(
-                      account?.name ?? 'Chào mừng bạn',
+                      getHeaderGreeting(account?.name),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
@@ -485,4 +458,21 @@ class _AppShellState extends State<AppShell> {
       );
     },
   );
+}
+
+String getGreetingTimeOfDay([DateTime? time]) {
+  final hour = (time ?? DateTime.now()).hour;
+  if (hour >= 5 && hour < 11) return 'Chào buổi sáng';
+  if (hour >= 11 && hour < 13) return 'Chào buổi trưa';
+  if (hour >= 13 && hour < 18) return 'Chào buổi chiều';
+  return 'Chào buổi tối';
+}
+
+String getHeaderGreeting(String? name, [DateTime? time]) {
+  final greeting = getGreetingTimeOfDay(time);
+  final displayName = name?.trim();
+  if (displayName != null && displayName.isNotEmpty) {
+    return '$greeting, $displayName';
+  }
+  return '$greeting, Người nghe nhạc';
 }

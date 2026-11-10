@@ -13,12 +13,12 @@ export const revalidate = 1800;
 
 async function LoadedRanking({ result, genreKey }) {
   const data = await result;
-  return <RankingSection songs={data.items} genreKey={genreKey} />;
+  return <RankingSection songs={data.items} genreKey={genreKey} unavailable={Boolean(data?.unavailable)} />;
 }
 
 async function LoadedRow({ result, genreKey, kind }) {
   const data = await result;
-  return <SongRowSection songs={data.items} genreKey={genreKey} kind={kind} />;
+  return <SongRowSection songs={data.items} genreKey={genreKey} kind={kind} unavailable={Boolean(data?.unavailable)} />;
 }
 
 async function LoadedPagination({ result, currentQuery }) {
@@ -63,6 +63,7 @@ export default async function Home({ searchParams }) {
   let searchSongs = [];
   let searchNextToken = null;
   let searchPrevToken = null;
+  let searchUnavailable = false;
   let mostViewedResult;
   let newestResult;
   let rankingResult;
@@ -73,6 +74,7 @@ export default async function Home({ searchParams }) {
     searchSongs = result.items;
     searchNextToken = result.nextPageToken;
     searchPrevToken = result.prevPageToken;
+    searchUnavailable = Boolean(result.unavailable);
   } else {
     // Start all feeds together, then stream each without waiting for the slowest.
     [mostViewedResult, newestResult, rankingResult] = [
@@ -102,7 +104,7 @@ export default async function Home({ searchParams }) {
           <>
 
             {searchSongs.length === 0 ? (
-              <HomeEmptyState />
+              <HomeEmptyState unavailable={searchUnavailable} />
             ) : (
               <div className="flex flex-col gap-4">
                 {searchSongs.map((song) => (

@@ -153,53 +153,258 @@ Future<void> pickWebPlaylist(
   }
 }
 
+enum AddToPlaylistChoice { downloadOffline, existingPlaylist }
+
+Future<void> promptAddToPlaylist(
+  BuildContext context,
+  MusicController controller, {
+  required PlaybackQueueItem song,
+  String? songId,
+  String? rawTrackId,
+}) async {
+  final ready = controller.tracks
+      .where(
+        (track) =>
+            track.isReady &&
+            (track.sourceUrl == song.url ||
+                (rawTrackId != null && track.id == rawTrackId)),
+      )
+      .firstOrNull;
+
+  final effectiveTrackId =
+      ready?.id ??
+      rawTrackId ??
+      (songId != null && RegExp(r'^(youtube|soundcloud)_').hasMatch(songId)
+          ? songId
+          : (songId != null && songId.length == 11
+              ? 'youtube_$songId'
+              : deriveTrackId(song.url)));
+
+  final choice = await showModalBottomSheet<AddToPlaylistChoice>(
+    context: context,
+    useSafeArea: true,
+    builder: (context) => SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
+            child: Row(
+              children: [
+                TrackArtwork(url: song.artworkUrl, size: 44),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        song.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 16,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        song.artist,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: context.palette.muted,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const Divider(),
+          ListTile(
+            leading: const Icon(Icons.download_for_offline_rounded),
+            title: const Text('Tải và thêm vào playlist offline'),
+            subtitle: const Text(
+              'Tải về thiết bị và tự động gắn vào playlist offline sau khi tải xong.',
+            ),
+            onTap: () => Navigator.pop(context, AddToPlaylistChoice.downloadOffline),
+          ),
+          ListTile(
+            leading: const Icon(Icons.playlist_add_rounded),
+            title: const Text('Thêm ngay vào playlist có sẵn'),
+            subtitle: const Text(
+              'Thêm vào playlist tài khoản web hoặc playlist offline nếu bài đã tải.',
+            ),
+            onTap: () => Navigator.pop(context, AddToPlaylistChoice.existingPlaylist),
+          ),
+          const SizedBox(height: 12),
+        ],
+      ),
+    ),
+  );
+
+  if (!context.mounted || choice == null) return;
+
+  if (choice == AddToPlaylistChoice.downloadOffline) {
+    await _handleDownloadAndAddToPlaylist(
+      context,
+      controller,
+      song,
+      effectiveTrackId,
+    );
+  } else {
+    await _handleAddToExistingPlaylist(
+      context,
+      controller,
+      song,
+      songId,
+      ready,
+      effectiveTrackId,
+    );
+  }
+}
+
+Future<void> _handleDownloadAndAddToPlaylist(
+  BuildContext context,
+  MusicController controller,
+  PlaybackQueueItem song,
+  String trackId,
+) async {
+  final playlists = controller.snapshot.playlists;
+  final selected = await showDialog<String>(
+    context: context,
+    builder: (context) => SimpleDialog(
+      title: const Text('Chọn playlist offline'),
+      children: [
+        for (final playlist in playlists)
+          ListTile(
+            enabled: !playlist.trackIds.contains(trackId),
+            title: Text(playlist.name),
+            subtitle: playlist.trackIds.contains(trackId)
+                ? const Text('Đã có trong playlist')
+                : Text('${playlist.trackIds.length} bài'),
+            onTap: playlist.trackIds.contains(trackId)
+                ? null
+                : () => Navigator.pop(context, playlist.id),
+          ),
+        ListTile(
+          leading: const Icon(Icons.add_rounded),
+          title: const Text('Tạo playlist mới'),
+          onTap: () => Navigator.pop(context, '__new__'),
+        ),
+      ],
+    ),
+  );
+
+  if (!context.mounted || selected == null) return;
+
+  if (selected == '__new__') {
+    final name = await showDialog<String>(
+      context: context,
+      builder: (_) => const _PlaylistNameDialog(),
+    );
+    if (!context.mounted || name == null || name.isEmpty) return;
+    try {
+      await controller.createPlaylist(
+        name,
+        trackId: trackId,
+        url: song.url,
+        enqueueIfMissing: true,
+      );
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Đã tạo “$name” và bắt đầu tải bài hát.')),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Chưa tạo được playlist: $e')),
+        );
+      }
+    }
+  } else {
+    try {
+      await controller.enqueueAndAddToPlaylist(selected, trackId, url: song.url);
+      final playlist = playlists.where((p) => p.id == selected).firstOrNull;
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Đang tải và sẽ tự động thêm vào “${playlist?.name ?? 'playlist'}”.',
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Chưa thêm được bài vào playlist: $e')),
+        );
+      }
+    }
+  }
+}
+
+Future<void> _handleAddToExistingPlaylist(
+  BuildContext context,
+  MusicController controller,
+  PlaybackQueueItem song,
+  String? songId,
+  OfflineTrack? readyTrack,
+  String trackId,
+) async {
+  final platform = controller.platform;
+  final account = controller.snapshot.account;
+
+  if (account != null && platform is AndroidMusicPlatform) {
+    final id =
+        songId ??
+        (trackId.startsWith('youtube_')
+            ? trackId.replaceFirst('youtube_', '')
+            : trackId);
+    await pickWebPlaylist(context, platform, id, song);
+    return;
+  }
+
+  if (readyTrack != null) {
+    await pickLocalPlaylist(context, controller, readyTrack);
+    return;
+  }
+
+  final proceed = await showDialog<bool>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('Bài chưa có trên máy'),
+      content: const Text(
+        'Bài hát này chưa được tải về máy nên chưa thể thêm trực tiếp vào playlist offline.\n\n'
+        'Bạn có thể chọn "Tải và thêm vào playlist offline" hoặc đăng nhập tài khoản để lưu vào playlist online.',
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          child: const Text('Đóng'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(context, true),
+          child: const Text('Tải và thêm vào playlist offline'),
+        ),
+      ],
+    ),
+  );
+
+  if (proceed == true && context.mounted) {
+    await _handleDownloadAndAddToPlaylist(context, controller, song, trackId);
+  }
+}
+
 Future<Map<String, dynamic>> loadAccountCollections(
   AndroidMusicPlatform? platform,
 ) async {
   final raw = await platform?.getProfileCollections();
   return raw == null ? {} : jsonDecode(raw) as Map<String, dynamic>;
-}
-
-class AccountPlaylist {
-  const AccountPlaylist(this.id, this.name, this.songs);
-  final String id, name;
-  final Map<String, PlaybackQueueItem> songs;
-
-  static List<AccountPlaylist> readAll(Object? data) => data is List
-      ? [
-          for (final row in data.whereType<Map>())
-            if (row['id'] case final String id when id.isNotEmpty)
-              AccountPlaylist(id, row['name']?.toString() ?? 'Playlist', {
-                if (row['songs'] case final List songs)
-                  for (final song in songs.whereType<Map>())
-                    if (song['id'] case final String songId)
-                      songId: ?readAccountSong(song),
-              }),
-        ]
-      : [];
-}
-
-PlaybackQueueItem? readAccountSong(Map row) {
-  final id = row['id'];
-  final source = row['sourceUrl'];
-  final url = source is String && source.isNotEmpty
-      ? source
-      : id is String && RegExp(r'^[A-Za-z0-9_-]{11}$').hasMatch(id)
-      ? 'https://www.youtube.com/watch?v=$id'
-      : null;
-  if (url == null) return null;
-  try {
-    return PlaybackQueueItem(
-      url: SourceLink.parse(url).url,
-      title: row['title'] is String ? row['title'] as String : 'Bài hát',
-      artist: row['artist'] is String ? row['artist'] as String : '',
-      artworkUrl: row['thumbnail'] is String
-          ? row['thumbnail'] as String
-          : null,
-    );
-  } on FormatException {
-    return null;
-  }
 }
 
 Widget accountSongTile(
@@ -219,6 +424,156 @@ Widget accountSongTile(
     queueItems: queue,
   ),
 );
+
+class AccountPlaylistDetail extends StatefulWidget {
+  const AccountPlaylistDetail({
+    super.key,
+    required this.controller,
+    required this.playlist,
+    required this.onReturn,
+  });
+
+  final MusicController controller;
+  final AccountPlaylist playlist;
+  final VoidCallback onReturn;
+
+  @override
+  State<AccountPlaylistDetail> createState() => _AccountPlaylistDetailState();
+}
+
+class _AccountPlaylistDetailState extends State<AccountPlaylistDetail> {
+  late Map<String, PlaybackQueueItem> _entries;
+  final _pending = <String>{};
+
+  @override
+  void initState() {
+    super.initState();
+    _entries = Map.of(widget.playlist.songs);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = widget.controller;
+    final platform = controller.platform;
+    final queue = _entries.values.toList();
+    final urls = _entries.values.map((s) => s.artworkUrl).toList();
+
+    return Scaffold(
+      appBar: AppBar(title: Text(widget.playlist.name)),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+        children: [
+          Center(
+            child: PlaylistArtwork(urls: urls, size: 180),
+          ),
+          const SizedBox(height: 20),
+          Text(
+            widget.playlist.name,
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.headlineSmall,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '${_entries.length} bài',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: context.palette.muted),
+          ),
+          const SizedBox(height: 24),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            alignment: WrapAlignment.center,
+            children: [
+              FilledButton.icon(
+                style: playButtonStyle(context),
+                onPressed: _entries.isEmpty
+                    ? null
+                    : () => controller.playAccountPlaylist(
+                          AccountPlaylist(
+                            widget.playlist.id,
+                            widget.playlist.name,
+                            _entries,
+                          ),
+                          shuffle: false,
+                        ),
+                icon: const Icon(Icons.play_arrow_rounded),
+                label: const Text('Phát tất cả'),
+              ),
+              OutlinedButton.icon(
+                onPressed: _entries.isEmpty
+                    ? null
+                    : () => controller.playAccountPlaylist(
+                          AccountPlaylist(
+                            widget.playlist.id,
+                            widget.playlist.name,
+                            _entries,
+                          ),
+                          shuffle: true,
+                        ),
+                icon: const Icon(Icons.shuffle_rounded),
+                label: const Text('Trộn bài'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          if (_entries.isEmpty)
+            const DataMessage(message: 'Chưa có bài nào trong playlist này.'),
+          for (final MapEntry(key: songId, value: song) in _entries.entries)
+            accountSongTile(
+              controller,
+              song,
+              queue,
+              trailing: TrackMenu(
+                title: song.title,
+                inPlaylist: true,
+                onSelected: (action) async {
+                  if (platform is! AndroidMusicPlatform) return;
+                  switch (action) {
+                    case TrackAction.share:
+                      await shareSong(context, controller, song.url);
+                    case TrackAction.playlist:
+                      await promptAddToPlaylist(
+                        context,
+                        controller,
+                        song: song,
+                        songId: songId,
+                      );
+                    case TrackAction.queue:
+                      enqueueSong(context, controller, song);
+                    case TrackAction.info:
+                      await showTrackInfo(context, song);
+                    case TrackAction.remove:
+                      if (!_pending.add(songId)) return;
+                      try {
+                        await platform.removeWebPlaylistSong(
+                          widget.playlist.id,
+                          songId,
+                        );
+                        if (context.mounted) {
+                          setState(() => _entries.remove(songId));
+                        }
+                      } on PlatformException catch (error) {
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                error.message ?? 'Chưa xóa được bài hát.',
+                              ),
+                            ),
+                          );
+                        }
+                      } finally {
+                        _pending.remove(songId);
+                      }
+                  }
+                },
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
 
 class AccountPlaylistTile extends StatelessWidget {
   const AccountPlaylistTile({
@@ -246,6 +601,9 @@ class AccountPlaylistTile extends StatelessWidget {
           size: width - 24,
         ),
         onTap: () => _open(context),
+        onPlay: playlist.songs.isEmpty
+            ? null
+            : () => controller.playAccountPlaylist(playlist),
       );
     }
     return ListTile(
@@ -259,78 +617,13 @@ class AccountPlaylistTile extends StatelessWidget {
   }
 
   Future<void> _open(BuildContext context) async {
-    final platform = controller.platform;
-    if (platform is! AndroidMusicPlatform) return;
-    final entries = Map.of(playlist.songs);
-    final pending = <String>{};
     await Navigator.push<void>(
       context,
       MaterialPageRoute(
-        builder: (_) => StatefulBuilder(
-          builder: (context, update) {
-            final queue = entries.values.toList();
-            return Scaffold(
-              appBar: AppBar(title: Text(playlist.name)),
-              body: ListView(
-                padding: const EdgeInsets.all(20),
-                children: [
-                  if (queue.isEmpty) const Text('Chưa có bài có thể phát.'),
-                  for (final MapEntry(key: songId, value: song)
-                      in entries.entries)
-                    accountSongTile(
-                      controller,
-                      song,
-                      queue,
-                      trailing: TrackMenu(
-                        title: song.title,
-                        inPlaylist: true,
-                        onSelected: (action) async {
-                          switch (action) {
-                            case TrackAction.share:
-                              await shareSong(context, controller, song.url);
-                            case TrackAction.playlist:
-                              await pickWebPlaylist(
-                                context,
-                                platform,
-                                songId,
-                                song,
-                              );
-                            case TrackAction.queue:
-                              enqueueSong(context, controller, song);
-                            case TrackAction.info:
-                              await showTrackInfo(context, song);
-                            case TrackAction.remove:
-                              if (!pending.add(songId)) return;
-                              try {
-                                await platform.removeWebPlaylistSong(
-                                  playlist.id,
-                                  songId,
-                                );
-                                if (context.mounted) {
-                                  update(() => entries.remove(songId));
-                                }
-                              } on PlatformException catch (error) {
-                                if (context.mounted) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Text(
-                                        error.message ??
-                                            'Chưa xóa được bài hát.',
-                                      ),
-                                    ),
-                                  );
-                                }
-                              } finally {
-                                pending.remove(songId);
-                              }
-                          }
-                        },
-                      ),
-                    ),
-                ],
-              ),
-            );
-          },
+        builder: (_) => AccountPlaylistDetail(
+          controller: controller,
+          playlist: playlist,
+          onReturn: onReturn,
         ),
       ),
     );
@@ -485,6 +778,12 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
                 ),
               _playlistGrid(playlists.length, (index, width) {
                 final playlist = playlists[index];
+                final readyTracks = controller.tracks
+                    .where(
+                      (track) =>
+                          playlist.trackIds.contains(track.id) && track.isReady,
+                    )
+                    .toList();
                 return _PlaylistCard(
                   name: playlist.name,
                   count: playlist.trackIds.length,
@@ -504,6 +803,12 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
                       ),
                     ),
                   ),
+                  onPlay: readyTracks.isEmpty
+                      ? null
+                      : () => controller.play(
+                            readyTracks.first,
+                            queueIds: readyTracks.map((t) => t.id).toList(),
+                          ),
                 );
               }),
             ],
@@ -538,12 +843,14 @@ class _PlaylistCard extends StatelessWidget {
     required this.width,
     required this.artwork,
     required this.onTap,
+    this.onPlay,
   });
   final String name;
   final int count;
   final double width;
   final Widget artwork;
   final VoidCallback onTap;
+  final VoidCallback? onPlay;
 
   @override
   Widget build(BuildContext context) => SizedBox(
@@ -559,7 +866,33 @@ class _PlaylistCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              artwork,
+              Stack(
+                children: [
+                  artwork,
+                  if (onPlay != null && count > 0)
+                    Positioned(
+                      right: 6,
+                      bottom: 6,
+                      child: Material(
+                        shape: const CircleBorder(),
+                        color: context.palette.action,
+                        elevation: 3,
+                        child: InkWell(
+                          customBorder: const CircleBorder(),
+                          onTap: onPlay,
+                          child: Padding(
+                            padding: const EdgeInsets.all(8),
+                            child: Icon(
+                              Icons.play_arrow_rounded,
+                              size: 22,
+                              color: context.palette.onAction,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
               const SizedBox(height: 12),
               Text(
                 name,
@@ -709,6 +1042,19 @@ class PlaylistDetail extends StatelessWidget {
                     label: const Text('Phát playlist'),
                   ),
                   OutlinedButton.icon(
+                    onPressed: tracks.isEmpty
+                        ? null
+                        : () {
+                            final shuffled = List<OfflineTrack>.from(tracks)..shuffle();
+                            controller.play(
+                              shuffled.first,
+                              queueIds: shuffled.map((t) => t.id).toList(),
+                            );
+                          },
+                    icon: const Icon(Icons.shuffle_rounded),
+                    label: const Text('Trộn bài'),
+                  ),
+                  OutlinedButton.icon(
                     onPressed: available.isEmpty
                         ? null
                         : () => _add(context, available),
@@ -753,7 +1099,12 @@ class PlaylistDetail extends StatelessWidget {
                         case TrackAction.share:
                           shareSong(context, controller, item.url);
                         case TrackAction.playlist:
-                          pickLocalPlaylist(context, controller, track);
+                          promptAddToPlaylist(
+                            context,
+                            controller,
+                            song: item,
+                            rawTrackId: track.id,
+                          );
                         case TrackAction.remove:
                           controller.removeFromPlaylist(playlistId, track);
                         case TrackAction.queue:

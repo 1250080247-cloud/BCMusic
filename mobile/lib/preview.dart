@@ -164,6 +164,8 @@ class _PreviewPlatform extends AndroidMusicPlatform {
       positionMs: _position,
       durationMs: 282000,
       offline: false,
+      repeatMode: _repeatMode,
+      shuffle: _shuffle,
     ),
   );
 
@@ -172,7 +174,7 @@ class _PreviewPlatform extends AndroidMusicPlatform {
   @override
   Future<LibrarySnapshot> getState() async => _state;
   @override
-  Future<void> playSource(String url) async {
+  Future<void> playSource(String url, {bool autoTransition = false}) async {
     _song = _songs.firstWhere((song) => song.sourceUrl == url);
     _playing = true;
     _position = 38000;
@@ -215,10 +217,24 @@ class _PreviewPlatform extends AndroidMusicPlatform {
   }
 
   @override
-  Future<void> createPlaylist(String name, {String? trackId}) async {
+  Future<void> createPlaylist(
+    String name, {
+    String? trackId,
+    String? url,
+    bool enqueueIfMissing = false,
+  }) async {
     final id = '${++_playlistSequence}';
     _playlists[id] = LocalPlaylist(id: id, name: name, trackIds: [?trackId]);
     _updates.add(_state);
+  }
+
+  @override
+  Future<void> enqueueAndAddToPlaylist(
+    String playlistId,
+    String id, {
+    String? url,
+  }) async {
+    await addToPlaylist(playlistId, id);
   }
 
   @override
@@ -331,6 +347,69 @@ class _PreviewPlatform extends AndroidMusicPlatform {
     _playing = !_playing;
     _updates.add(_state);
   }
+
+  @override
+  Future<void> pause() async {
+    _playing = false;
+    _updates.add(_state);
+  }
+
+  final _lyricsCache = <String, String>{};
+
+  @override
+  Future<void> saveLyrics(String trackId, String data) async {
+    _lyricsCache[trackId] = data;
+  }
+
+  @override
+  Future<String?> getLyrics(String trackId) async => _lyricsCache[trackId];
+
+  @override
+  Future<void> setSleepTimer(int? minutes, {bool atEndOfTrack = false}) async {}
+
+  @override
+  Future<void> cancelSleepTimer() async {}
+
+  var _repeatMode = 'off';
+  var _shuffle = false;
+
+  @override
+  Future<void> setRepeatMode(String mode) async {
+    _repeatMode = mode;
+    _preferences = AppPreferences.fromMap({
+      'light': _preferences.light,
+      'volume': _preferences.volume,
+      'speed': _preferences.speed,
+      'motion': _preferences.motion,
+      'repeatMode': _repeatMode,
+      'shuffle': _shuffle,
+      'downloadQuality': _preferences.downloadQuality,
+      'crossfade': _preferences.crossfade,
+    });
+    _updates.add(_state);
+  }
+
+  @override
+  Future<void> setShuffle(bool enabled) async {
+    _shuffle = enabled;
+    _preferences = AppPreferences.fromMap({
+      'light': _preferences.light,
+      'volume': _preferences.volume,
+      'speed': _preferences.speed,
+      'motion': _preferences.motion,
+      'repeatMode': _repeatMode,
+      'shuffle': _shuffle,
+      'downloadQuality': _preferences.downloadQuality,
+      'crossfade': _preferences.crossfade,
+    });
+    _updates.add(_state);
+  }
+
+  @override
+  Future<void> removeQueueItem(int index) async {}
+
+  @override
+  Future<void> reorderQueue(int oldIndex, int newIndex) async {}
 
   @override
   Future<void> seek(int positionMs) async {

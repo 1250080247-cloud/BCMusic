@@ -40,16 +40,27 @@ class FakeMusicPlatform implements MusicPlatform {
   @override
   Future<void> play(String id, {List<String>? queueIds}) async {}
   @override
-  Future<void> playSource(String url) async {
+  Future<void> playSource(String url, {bool autoTransition = false}) async {
     playedSources.add(url);
   }
 
   @override
-  Future<void> createPlaylist(String name, {String? trackId}) async {}
+  Future<void> createPlaylist(
+    String name, {
+    String? trackId,
+    String? url,
+    bool enqueueIfMissing = false,
+  }) async {}
   @override
   Future<void> deletePlaylist(String playlistId) async {}
   @override
   Future<void> addToPlaylist(String playlistId, String id) async {}
+  @override
+  Future<void> enqueueAndAddToPlaylist(
+    String playlistId,
+    String id, {
+    String? url,
+  }) async {}
   @override
   Future<void> removeFromPlaylist(String playlistId, String id) async {}
   @override
@@ -77,6 +88,24 @@ class FakeMusicPlatform implements MusicPlatform {
   Future<void> signOut() async {}
   @override
   Future<void> clearAccountError() async {}
+  @override
+  Future<void> saveLyrics(String trackId, String data) async {}
+  @override
+  Future<String?> getLyrics(String trackId) async => null;
+  @override
+  Future<void> pause() async {}
+  @override
+  Future<void> setSleepTimer(int? minutes, {bool atEndOfTrack = false}) async {}
+  @override
+  Future<void> cancelSleepTimer() async {}
+  @override
+  Future<void> setRepeatMode(String mode) async {}
+  @override
+  Future<void> setShuffle(bool enabled) async {}
+  @override
+  Future<void> removeQueueItem(int index) async {}
+  @override
+  Future<void> reorderQueue(int oldIndex, int newIndex) async {}
 }
 
 void main() {

@@ -32,6 +32,10 @@ export default function Player() {
   const historySavedForRef = useRef(null);
   const consecutiveErrorsRef = useRef(0);
   const shuffleRoundRef = useRef(new Set());
+  const fadeTimerRef = useRef(null);
+  const isFadingOutRef = useRef(false);
+  const isFadingInRef = useRef(false);
+  const isAutoTransitionRef = useRef(false);
   const [sleepMinutes, setSleepMinutes] = useState(0);
   const [sleepEndsAt, setSleepEndsAt] = useState(null);
   const {
@@ -52,6 +56,7 @@ export default function Player() {
   const language = useSettingsStore((state) => state.language);
   const volume = useSettingsStore((state) => state.volume);
   const playbackRate = useSettingsStore((state) => state.playbackRate);
+  const crossfade = useSettingsStore((state) => state.crossfade);
   const t = getDictionary(language);
 
   const isFavorited = currentSong && favorites?.some((s) => s.id === currentSong.id);
@@ -142,6 +147,7 @@ export default function Player() {
   // Listen for seek commands from NowPlayingPanel
   useEffect(() => {
     const handleSeekTo = (e) => {
+      cancelCrossfade();
       const time = e.detail?.time;
       if (time === undefined) return;
       if (isSoundCloud && scWidgetRef.current) {
@@ -162,13 +168,45 @@ export default function Player() {
   }, [isSoundCloud, isPlaying]);
 
 
-  // ─── YouTube: Volume sync ──────────────────────────────
-  useEffect(() => {
-    if (isSoundCloud) return;
-    if (ytPlayerRef.current?.setVolume) {
-      ytPlayerRef.current.setVolume(volume);
+  const applyPlayerVolume = useCallback((val) => {
+    const clamped = Math.max(0, Math.min(100, Math.round(val)));
+    if (!isSoundCloud) {
+      try { ytPlayerRef.current?.setVolume?.(clamped); } catch {}
+    } else {
+      try { scWidgetRef.current?.setVolume?.(clamped); } catch {}
     }
-  }, [volume, isSoundCloud]);
+  }, [isSoundCloud]);
+
+  // ─── Crossfade & Volume Controls ─────────────────────
+  // NOTE: Web playback plays through a single iframe/widget (YouTube or SoundCloud) at a time,
+  // so smooth transitions are executed sequentially (fade out current track in the final 5s,
+  // then fade in the new track over 5s) rather than simultaneous dual-stream mixing.
+  const cancelCrossfade = useCallback(() => {
+    if (fadeTimerRef.current) {
+      clearInterval(fadeTimerRef.current);
+      fadeTimerRef.current = null;
+    }
+    isFadingOutRef.current = false;
+    isFadingInRef.current = false;
+    applyPlayerVolume(volume);
+  }, [applyPlayerVolume, volume]);
+
+  // When crossfade setting is toggled off, immediately cancel active ramp and restore volume
+  useEffect(() => {
+    if (!crossfade) {
+      cancelCrossfade();
+    }
+  }, [crossfade, cancelCrossfade]);
+
+  // ─── Volume sync ───────────────────────────────────────
+  // If user adjusts the volume slider while a fade ramp is running, cancel the ramp and apply new volume immediately
+  useEffect(() => {
+    if (isFadingOutRef.current || isFadingInRef.current) {
+      cancelCrossfade();
+    } else {
+      applyPlayerVolume(volume);
+    }
+  }, [volume, applyPlayerVolume, cancelCrossfade]);
 
   // ─── YouTube: Playback rate sync ───────────────────────
   useEffect(() => {
@@ -304,24 +342,69 @@ export default function Player() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentSong?.id, currentSong?.embedUrl, isSoundCloud]);
 
-  // ─── SoundCloud: Volume sync ───────────────────────────
+  // ─── Crossfade: Fade-in when new track starts ──────────
   useEffect(() => {
-    if (!isSoundCloud || !scWidgetRef.current) return;
-    try {
-      scWidgetRef.current.setVolume(volume);
-    } catch {
-      // widget not ready yet
+    if (!currentSong?.id) return;
+    isFadingOutRef.current = false;
+    if (!crossfade || repeatMode === 'one' || !isAutoTransitionRef.current) {
+      isAutoTransitionRef.current = false;
+      cancelCrossfade();
+      return;
     }
-  }, [volume, isSoundCloud]);
+    isAutoTransitionRef.current = false;
+    isFadingInRef.current = true;
+    applyPlayerVolume(0);
+    const startTime = Date.now();
+    if (fadeTimerRef.current) clearInterval(fadeTimerRef.current);
+    fadeTimerRef.current = setInterval(() => {
+      const elapsed = Date.now() - startTime;
+      const progress = Math.min(1, elapsed / 5000);
+      applyPlayerVolume(volume * progress);
+      if (progress >= 1) {
+        clearInterval(fadeTimerRef.current);
+        fadeTimerRef.current = null;
+        isFadingInRef.current = false;
+      }
+    }, 100);
+    return () => {
+      if (fadeTimerRef.current) {
+        clearInterval(fadeTimerRef.current);
+        fadeTimerRef.current = null;
+      }
+    };
+  }, [currentSong?.id, crossfade, repeatMode, volume, applyPlayerVolume, cancelCrossfade]);
+
+  // ─── Crossfade: Fade-out in last 5 seconds ─────────────
+  useEffect(() => {
+    if (!isPlaying || !duration || duration <= 10 || !crossfade || repeatMode === 'one') return;
+    const remaining = duration - currentTime;
+    if (remaining <= 5 && remaining > 0 && !isFadingOutRef.current && !isFadingInRef.current) {
+      isFadingOutRef.current = true;
+      const startTime = Date.now();
+      const startVol = volume;
+      if (fadeTimerRef.current) clearInterval(fadeTimerRef.current);
+      fadeTimerRef.current = setInterval(() => {
+        const elapsed = Date.now() - startTime;
+        const progress = Math.min(1, elapsed / 5000);
+        applyPlayerVolume(Math.max(0, startVol * (1 - progress)));
+        if (progress >= 1) {
+          clearInterval(fadeTimerRef.current);
+          fadeTimerRef.current = null;
+        }
+      }, 100);
+    }
+  }, [currentTime, duration, isPlaying, crossfade, repeatMode, volume, applyPlayerVolume]);
 
   // ─── Navigation ────────────────────────────────────────
   const stopPlayback = useCallback(() => {
+    cancelCrossfade();
     if (isSoundCloud) scWidgetRef.current?.pause();
     else ytPlayerRef.current?.pauseVideo?.();
     setIsPlaying(false);
-  }, [isSoundCloud]);
+  }, [isSoundCloud, cancelCrossfade]);
 
   const replayTrack = useCallback(() => {
+    cancelCrossfade();
     if (isSoundCloud && scWidgetRef.current) {
       scWidgetRef.current.seekTo(0);
       scWidgetRef.current.play();
@@ -330,9 +413,12 @@ export default function Player() {
       ytPlayerRef.current.playVideo();
     }
     setCurrentTime(0);
-  }, [isSoundCloud]);
+  }, [isSoundCloud, cancelCrossfade]);
 
   const playNext = useCallback(() => {
+    if (!isAutoTransitionRef.current) {
+      cancelCrossfade();
+    }
     // A queued track plays before the list continues.
     const queued = shiftQueue();
     if (queued) {
@@ -405,6 +491,7 @@ export default function Player() {
   }, [sleepEndsAt, stopPlayback]);
 
   const playPrev = useCallback(() => {
+    cancelCrossfade();
     if (!playlist.length || !currentSong) return;
     // Past the first few seconds, Previous restarts the current track, as most players do.
     if (currentTime > 3) {
@@ -431,12 +518,14 @@ export default function Player() {
   // Handle end-of-track (called by both YouTube and SoundCloud)
   const handleTrackEnd = useCallback(() => {
     if (repeatMode === 'one') {
+      cancelCrossfade();
       replayTrack();
     } else {
+      isAutoTransitionRef.current = true;
       setIsPlaying(false);
       playNext();
     }
-  }, [repeatMode, replayTrack, playNext]);
+  }, [repeatMode, replayTrack, playNext, cancelCrossfade]);
 
   // Keep ref in sync so event-listener closures always call the latest version
   useEffect(() => {
@@ -454,6 +543,7 @@ export default function Player() {
 
   // ─── Toggle play/pause (dual source) ──────────────────
   const togglePlay = () => {
+    cancelCrossfade();
     if (isSoundCloud) {
       if (!scWidgetRef.current) return;
       try {
@@ -636,7 +726,10 @@ export default function Player() {
             <button
               type="button"
               aria-label={t.player.next}
-              onClick={playNext}
+              onClick={() => {
+                cancelCrossfade();
+                playNext();
+              }}
               className="player-control-btn muted-text"
             >
               <SkipForward size={18} />
@@ -674,6 +767,7 @@ export default function Player() {
               max={duration || 100}
               value={currentTime}
               onChange={(event) => {
+                cancelCrossfade();
                 const value = Number(event.target.value);
                 setCurrentTime(value);
 

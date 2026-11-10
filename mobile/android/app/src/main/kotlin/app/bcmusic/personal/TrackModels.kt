@@ -22,5 +22,11 @@ data class TrackMetadata(val id: String, val title: String, val artist: String,
     }
 }
 
-data class ResolvedTrack(val metadata: TrackMetadata, val streamUrl: String,
-    val mimeType: String?, val artworkUrl: String?, val resolvedAt: Long = System.currentTimeMillis())
+data class ResolvedTrack(
+    val metadata: TrackMetadata,
+    val streamUrl: String,
+    val mimeType: String?,
+    val artworkUrl: String?,
+    val quality: String = "standard",
+    val resolvedAt: Long = System.currentTimeMillis()
+)

@@ -4,6 +4,8 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 
+import 'app_config.dart';
+
 class DiscoverySong {
   const DiscoverySong({
     required this.id,
@@ -96,6 +98,12 @@ abstract interface class SearchSuggestions {
 
 class WebsiteDiscoveryRepository
     implements DiscoveryRepository, SearchSuggestions {
+  WebsiteDiscoveryRepository({String? host})
+      : host = host ?? BCMusicConfig.websiteHost;
+
+  static const defaultWebsiteHost = BCMusicConfig.defaultWebsiteHost;
+
+  final String host;
   final _client = HttpClient()..connectionTimeout = const Duration(seconds: 15);
   final _cache = <String, (DateTime, List<DiscoverySong>)>{};
   final _pending = <String, Future<List<DiscoverySong>>>{};
@@ -110,7 +118,7 @@ class WebsiteDiscoveryRepository
   @override
   Future<List<String>> suggestions(String query) async {
     final data = await _request(
-      Uri.https('bc-music-gilt.vercel.app', '/api/search/suggestions', {
+      Uri.https(host, '/api/search/suggestions', {
         'q': query,
         'language': 'vi',
       }),
@@ -130,7 +138,7 @@ class WebsiteDiscoveryRepository
     Map<String, String> parameters,
   ) async {
     final uri = Uri.https(
-      'bc-music-gilt.vercel.app',
+      host,
       '/api/$endpoint',
       parameters,
     );

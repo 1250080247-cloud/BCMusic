@@ -14,10 +14,12 @@ export default function SettingsPanel() {
     language,
     volume,
     playbackRate,
+    crossfade,
     setTheme,
     setLanguage,
     setVolume,
     setPlaybackRate,
+    setCrossfade,
   } = useSettingsStore();
   const t = getDictionary(language);
 
@@ -111,6 +113,21 @@ export default function SettingsPanel() {
                       </button>
                     ))}
                   </div>
+                </div>
+
+                <div className="mt-4 border-t border-[var(--border-subtle)] pt-4">
+                  <label className="flex items-center justify-between cursor-pointer">
+                    <div>
+                      <div className="text-sm font-semibold">{language === 'vi' ? 'Chuyển bài mượt mà' : 'Crossfade (5s)'}</div>
+                      <div className="muted-text text-xs">{language === 'vi' ? 'Giảm dần và tăng dần âm lượng 5 giây khi đổi bài' : 'Smooth 5s volume transition between tracks'}</div>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={Boolean(crossfade)}
+                      onChange={(event) => setCrossfade(event.target.checked)}
+                      className="music-checkbox h-5 w-5 rounded accent-pink-500 cursor-pointer"
+                    />
+                  </label>
                 </div>
               </div>
 

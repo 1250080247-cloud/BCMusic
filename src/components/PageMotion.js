@@ -11,18 +11,27 @@ if (typeof window !== 'undefined') gsap.registerPlugin(useGSAP, ScrollTrigger);
 export default function PageMotion({ children }) {
   const root = useRef(null);
   const pathname = usePathname();
+  const lastPathnameRef = useRef(pathname);
+  const introPlayedRef = useRef(false);
 
   useGSAP(() => {
+    const isNewRoute = lastPathnameRef.current !== pathname;
+    if (isNewRoute) {
+      lastPathnameRef.current = pathname;
+      introPlayedRef.current = false;
+    }
+
     const media = gsap.matchMedia();
     media.add('(prefers-reduced-motion: no-preference)', () => {
-      const intro = root.current.querySelectorAll('h1, [data-motion-intro]');
-      if (intro.length) {
+      const intro = root.current?.querySelectorAll('h1, [data-motion-intro]');
+      if (intro?.length && (isNewRoute || !introPlayedRef.current)) {
+        introPlayedRef.current = true;
         gsap.fromTo(intro, { opacity: 0, y: 12 }, {
           opacity: 1, y: 0, duration: 0.45, stagger: 0.055,
-          ease: 'power2.out', clearProps: 'opacity,transform',
+          ease: 'power2.out', immediateRender: false, clearProps: 'opacity,transform',
         });
       }
-      root.current.querySelectorAll('[data-motion-section]').forEach((section) => {
+      root.current?.querySelectorAll('[data-motion-section]').forEach((section) => {
         gsap.fromTo(section, { opacity: 0, y: 20 }, {
           opacity: 1, y: 0, duration: 0.55, ease: 'power2.out',
           immediateRender: false,

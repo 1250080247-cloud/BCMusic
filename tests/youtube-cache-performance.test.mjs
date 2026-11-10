@@ -100,3 +100,39 @@ test('the cache schema preserves optional duration and Shorts filtering metadata
   assert.equal(document.shortsFiltered, true);
   assert.equal(document.shortsFilterVersion, 3);
 });
+
+test('a YouTube timeout or failure falls back to stale cache without overwriting it', async () => {
+  const staleCached = {
+    cachedAt: new Date(Date.now() - 3 * 3600 * 1000), // 3 hours ago (expired)
+    shortsFiltered: true,
+    shortsFilterVersion: 3,
+    songs: [song],
+    nextPageToken: 'stale-token',
+  };
+  const f = await fixture({ cached: staleCached, searchFails: true });
+  const result = await f.getYouTubeSongs('music');
+  assert.equal(result.items.length, 1);
+  assert.equal(result.items[0].id, song.id);
+  assert.equal(result.stale, true);
+  assert.equal(f.writes.length, 0, 'stale cache should not be overwritten on provider failure');
+});
+
+test('a YouTube timeout with no cache returns unavailable without caching an outage', async () => {
+  const { getYouTubeSongs } = await loadModule('src/lib/youtube.js', {
+    '@/lib/mongodb': { default: async () => {} },
+    '@/models/SongCache': { default: {
+      findOne: () => ({ lean: async () => null }),
+      findOneAndUpdate: async () => { assert.fail('should not write cache on timeout'); },
+    } },
+  }, {
+    process: { env: { YOUTUBE_API_KEY: 'test-key' } },
+    fetch: async () => {
+      const err = new Error('The operation was aborted');
+      err.name = 'TimeoutError';
+      throw err;
+    },
+  });
+  const result = await getYouTubeSongs('music');
+  assert.equal(result.items.length, 0);
+  assert.equal(result.unavailable, true);
+});

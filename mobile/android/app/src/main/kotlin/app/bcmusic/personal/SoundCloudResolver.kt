@@ -26,7 +26,7 @@ data class SoundCloudFormat(val bitrate: Int, val mimeType: String) {
 class SoundCloudResolver {
     // Reuse upstream's anonymous bootstrap and track resolution. Its current
     // stream builder only recognizes AAC 160k; SoundCloud now returns AAC 96k.
-    fun resolve(source: SourceUrl, compact: Boolean = false): ResolvedTrack {
+    fun resolve(source: SourceUrl, quality: String = "standard"): ResolvedTrack {
         val downloader = SourceDownloader()
         val canonicalInput = if (source.url.toHttpUrl().host == "on.soundcloud.com")
             SourceUrl.parse(downloader.head(source.url).latestUrl()) else source
@@ -45,7 +45,25 @@ class SoundCloudResolver {
                 item.getObject("format")?.getString("protocol", "") ?: "", item.getBoolean("snipped"))
                 ?: return@mapNotNull null
             item.getString("url")?.let { it to format }
-        }.sortedByDescending { (_, format) -> if (compact && format.bitrate <= 96) format.bitrate + 192 else if (format.bitrate <= 192) format.bitrate else 0 }
+        }.sortedWith { a, b ->
+            val fA = a.second
+            val fB = b.second
+            when (quality) {
+                "economy" -> {
+                    val scoreA = if (fA.bitrate <= 64) 1000 - fA.bitrate else if (fA.bitrate <= 96) 500 - fA.bitrate else 100 - fA.bitrate
+                    val scoreB = if (fB.bitrate <= 64) 1000 - fB.bitrate else if (fB.bitrate <= 96) 500 - fB.bitrate else 100 - fB.bitrate
+                    scoreB.compareTo(scoreA)
+                }
+                "high" -> {
+                    fB.bitrate.compareTo(fA.bitrate)
+                }
+                else -> {
+                    val distA = kotlin.math.abs(fA.bitrate - 128)
+                    val distB = kotlin.math.abs(fB.bitrate - 128)
+                    distA.compareTo(distB)
+                }
+            }
+        }
         if (candidates.isEmpty()) throw SourceFailure("UNSUPPORTED", "Bài này chỉ có định dạng chưa hỗ trợ hoặc bản nghe thử.")
         for ((endpoint, format) in candidates.take(20)) {
             val request = endpoint.toHttpUrl().newBuilder()
@@ -58,10 +76,20 @@ class SoundCloudResolver {
                 SourceNetwork.validate(audioUrl.toHttpUrl())
                 val id = track.getLong("id").takeIf { it > 0 }
                     ?: throw SourceFailure("UNAVAILABLE", "Không đọc được danh tính bài SoundCloud.")
-                return ResolvedTrack(TrackMetadata("soundcloud_$id", track.getString("title", "Chưa có tên").take(500),
-                    track.getObject("user")?.getString("username", "")?.take(300) ?: "",
-                    sourceUrl.url, "soundcloud", duration), audioUrl, format.mimeType,
-                    track.getString("artwork_url") ?: track.getObject("user")?.getString("avatar_url"))
+                return ResolvedTrack(
+                    metadata = TrackMetadata(
+                        id = "soundcloud_$id",
+                        title = track.getString("title", "Chưa có tên").take(500),
+                        artist = track.getObject("user")?.getString("username", "")?.take(300) ?: "",
+                        sourceUrl = sourceUrl.url,
+                        provider = "soundcloud",
+                        durationMs = duration
+                    ),
+                    streamUrl = audioUrl,
+                    mimeType = format.mimeType,
+                    artworkUrl = track.getString("artwork_url") ?: track.getObject("user")?.getString("avatar_url"),
+                    quality = quality
+                )
             } catch (_: java.io.IOException) {
                 // Try another explicitly supported, unencrypted full-length source.
             }

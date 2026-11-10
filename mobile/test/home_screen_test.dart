@@ -8,6 +8,7 @@ import 'package:bcmusic/discovery.dart';
 import 'package:bcmusic/discovery_screen.dart';
 import 'package:bcmusic/home_screen.dart';
 import 'package:bcmusic/platform_bridge.dart';
+import 'package:bcmusic/settings_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -63,7 +64,7 @@ class _AccountPlaylistPlatform extends AndroidMusicPlatform {
   ''';
 
   @override
-  Future<void> playSource(String url) async => played.add(url);
+  Future<void> playSource(String url, {bool autoTransition = false}) async => played.add(url);
 
   @override
   Future<List<String>> getFavoriteIds() async => favorites.toList();
@@ -416,6 +417,14 @@ void main() {
       await tester.tap(find.byTooltip('Cài đặt'));
       await tester.pumpAndSettle();
       expect(find.text('Tốc độ phát'), findsOneWidget);
+      await tester.scrollUntilVisible(
+        find.text('Giao diện sáng'),
+        100,
+        scrollable: find.descendant(
+          of: find.byType(SettingsScreen),
+          matching: find.byType(Scrollable),
+        ),
+      );
       expect(find.text('Giao diện sáng'), findsOneWidget);
       await tester.pumpWidget(const SizedBox());
       controller.dispose();

@@ -3,6 +3,8 @@ import SongCache from '@/models/SongCache';
 import { parseYouTubeDuration, filterYouTubeShorts, SHORTS_FILTER_VERSION } from '@/lib/youtube-shorts';
 
 const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour in milliseconds
+const SEARCH_TIMEOUT_MS = Number(process.env.YOUTUBE_SEARCH_TIMEOUT_MS) || 10000;
+const STATS_TIMEOUT_MS = Number(process.env.YOUTUBE_STATS_TIMEOUT_MS) || 4500;
 const inFlight = new Map();
 const emptyResult = () => ({ items: [], nextPageToken: null, prevPageToken: null });
 const MIN_DURATION_SECONDS = 30;
@@ -39,11 +41,16 @@ async function fetchFromYouTube(searchQuery, pageToken = '', order = 'relevance'
   const url = `https://www.googleapis.com/youtube/v3/search?${params}`;
 
   try {
-    const res = await fetch(url, { cache: 'no-store', signal: AbortSignal.timeout(6000) });
+    const res = await fetch(url, { cache: 'no-store', signal: AbortSignal.timeout(SEARCH_TIMEOUT_MS) });
     const data = await res.json();
 
     if (!res.ok) {
-      console.error('YouTube API Error:', data.error?.message);
+      const reason = data.error?.errors?.[0]?.reason;
+      if (reason === 'quotaExceeded' || res.status === 429) {
+        console.warn('YouTube API quota reached or rate-limited; skipping provider request.');
+      } else {
+        console.warn('YouTube API error status ' + res.status + '; provider request unavailable.');
+      }
       return null;
     }
 
@@ -56,7 +63,7 @@ async function fetchFromYouTube(searchQuery, pageToken = '', order = 'relevance'
     if (videoIds) {
       try {
         const statsUrl = `https://www.googleapis.com/youtube/v3/videos?part=statistics,contentDetails&id=${videoIds}&key=${API_KEY}`;
-        const statsRes = await fetch(statsUrl, { cache: 'no-store', signal: AbortSignal.timeout(2500) });
+        const statsRes = await fetch(statsUrl, { cache: 'no-store', signal: AbortSignal.timeout(STATS_TIMEOUT_MS) });
         const statsData = await statsRes.json();
         // Duration is required to enforce the cutoff. Do not cache a provider
         // outage as a successful empty search page.
@@ -66,7 +73,12 @@ async function fetchFromYouTube(searchQuery, pageToken = '', order = 'relevance'
           durations[v.id] = parseYouTubeDuration(v.contentDetails?.duration);
         }
       } catch (statsError) {
-        console.error('YouTube statistics unavailable:', statsError.name);
+        const isTimeout = statsError.name === 'TimeoutError' || statsError.name === 'AbortError';
+        if (isTimeout) {
+          console.warn('YouTube statistics timed out; metadata unavailable.');
+        } else {
+          console.warn('YouTube statistics unavailable:', statsError.name || 'network error');
+        }
         return null;
       }
     }
@@ -90,7 +102,12 @@ async function fetchFromYouTube(searchQuery, pageToken = '', order = 'relevance'
       prevPageToken: data.prevPageToken || null,
     };
   } catch (error) {
-    console.error('YouTube search unavailable:', error.name);
+    const isTimeout = error.name === 'TimeoutError' || error.name === 'AbortError';
+    if (isTimeout) {
+      console.warn('YouTube search timed out for query "' + searchQuery + '"; falling back safely.');
+    } else {
+      console.warn('YouTube search unavailable:', error.name || 'network error');
+    }
     return null;
   }
 }
@@ -108,7 +125,7 @@ async function loadSongs(cacheKey, searchQuery, pageToken, order, maxResults) {
     cached = await SongCache.findOne({ cacheKey }).lean();
     cacheAvailable = true;
   } catch {
-    console.error('YouTube cache read unavailable; using the provider.');
+    console.warn('YouTube cache read unavailable; using the provider.');
   }
 
   if (cached && Date.now() - new Date(cached.cachedAt).getTime() < CACHE_TTL_MS) {
@@ -121,14 +138,28 @@ async function loadSongs(cacheKey, searchQuery, pageToken, order, maxResults) {
         await SongCache.findOneAndUpdate({ cacheKey, cachedAt: cached.cachedAt }, {
           $set: { songs: items, shortsFiltered: true, shortsFilterVersion: SHORTS_FILTER_VERSION },
         });
-      } catch { console.error('YouTube cache metadata update unavailable.'); }
+      } catch { console.warn('YouTube cache metadata update unavailable.'); }
     }
     return { items: items.filter(aboveMinimumDuration), nextPageToken: cached.nextPageToken, prevPageToken: cached.prevPageToken };
   }
 
   const result = await fetchFromYouTube(searchQuery, pageToken, order, maxResults);
-  // A provider failure is not an empty result: callers must show an error and must not cache it.
-  if (!result) return { ...emptyResult(), unavailable: true };
+  // A provider failure is not an empty result: fall back to stale cache if available,
+  // or return an unavailable error indicator without caching an outage.
+  if (!result) {
+    if (cached && Array.isArray(cached.songs) && cached.songs.length > 0) {
+      console.warn('Serving stale cached YouTube songs for "' + searchQuery + '" during provider outage.');
+      const verified = cached.shortsFiltered && cached.shortsFilterVersion === SHORTS_FILTER_VERSION;
+      const filtered = verified ? { items: cached.songs || [], complete: true } : await filterYouTubeShorts(cached.songs || []);
+      return {
+        items: (filtered.items || []).filter(aboveMinimumDuration),
+        nextPageToken: cached.nextPageToken,
+        prevPageToken: cached.prevPageToken,
+        stale: true,
+      };
+    }
+    return { ...emptyResult(), unavailable: true };
+  }
   const { shortsFilterComplete, ...page } = result;
   if (cacheAvailable && shortsFilterComplete) {
     try {
@@ -148,7 +179,7 @@ async function loadSongs(cacheKey, searchQuery, pageToken, order, maxResults) {
         },
         { upsert: true, returnDocument: 'after' }
       );
-    } catch { console.error('YouTube cache write unavailable; returning fetched songs.'); }
+    } catch { console.warn('YouTube cache write unavailable; returning fetched songs.'); }
   }
   return page;
 }

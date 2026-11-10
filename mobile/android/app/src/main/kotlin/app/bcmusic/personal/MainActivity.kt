@@ -5,6 +5,7 @@ import android.app.Activity
 import kotlinx.coroutines.CancellableContinuation
 import android.content.ComponentName
 import android.content.Intent
+import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
@@ -235,13 +236,15 @@ class MainActivity : FlutterActivity(), EventChannel.StreamHandler {
                     }
                     "resolve" -> {
                         val input = call.argument<String>("url") ?: throw SourceFailure("INVALID_URL", "Thiếu link bài hát.")
-                        val track = withContext(Dispatchers.IO) { library.resolver.resolve(input) }
+                        val quality = library.preferences.current.downloadQuality
+                        val track = withContext(Dispatchers.IO) { library.resolver.resolve(input, quality) }
                         result.success(track.metadata.toMap() + mapOf("status" to "preview", "artworkUrl" to track.artworkUrl))
                     }
                     "enqueue" -> {
                         notificationPermission()
                         val trackId = id(call)
-                        val track = withContext(Dispatchers.IO) { library.resolver.preview(trackId) }
+                        val quality = library.preferences.current.downloadQuality
+                        val track = withContext(Dispatchers.IO) { library.resolver.preview(trackId, quality) }
                         library.enqueue(track)
                         result.success(null)
                     }
@@ -250,15 +253,33 @@ class MainActivity : FlutterActivity(), EventChannel.StreamHandler {
                         library.awaitReady()
                         val download = library.find(id(call))
                         val url = TrackMetadata.fromBytes(download.request.data).sourceUrl
-                        val track = withContext(Dispatchers.IO) { library.resolver.resolve(url) }
+                        val quality = library.preferences.current.downloadQuality
+                        val track = withContext(Dispatchers.IO) { library.resolver.resolve(url, quality) }
                         library.enqueue(track)
                         result.success(null)
                     }
-                    "remove" -> { library.remove(id(call)); result.success(null) }
+                    "remove" -> {
+                        val trackId = id(call)
+                        removeLyrics(trackId)
+                        library.remove(trackId)
+                        result.success(null)
+                    }
+                    "saveLyrics" -> {
+                        val trackId = call.argument<String>("trackId").orEmpty()
+                        val data = call.argument<String>("data").orEmpty()
+                        if (trackId.isNotBlank() && data.isNotBlank()) saveLyrics(trackId, data)
+                        result.success(null)
+                    }
+                    "getLyrics" -> {
+                        val trackId = call.argument<String>("trackId").orEmpty()
+                        result.success(getLyrics(trackId))
+                    }
                     "play" -> {
                         playbackRequest++
                         notificationPermission()
                         library.awaitReady()
+                        library.cancelFade()
+                        library.sourceQueueMode = false
                         val trackId = id(call)
                         val requested = call.argument<List<String>>("queueIds")
                         val downloads = if (requested == null) library.completed() else
@@ -267,6 +288,7 @@ class MainActivity : FlutterActivity(), EventChannel.StreamHandler {
                         if (index < 0) throw SourceFailure("NOT_READY", "Bài này chưa tải hoàn tất.")
                         val player = controller()
                         library.playbackError = null
+                        library.resetOnlineTrack()
                         player.setMediaItems(downloads.map(library::mediaItem), index, 0)
                         player.prepare()
                         player.play()
@@ -276,33 +298,147 @@ class MainActivity : FlutterActivity(), EventChannel.StreamHandler {
                         val version = ++playbackRequest
                         notificationPermission()
                         library.awaitReady()
+                        library.sourceQueueMode = true
+                        val auto = call.argument<Boolean>("autoTransition") == true
                         val input = SourceUrl.parse(call.argument<String>("url") ?: "")
                         val cached = library.completed().firstOrNull {
                             runCatching { TrackMetadata.fromBytes(it.request.data).sourceUrl == input.url }.getOrDefault(false)
                         }
-                        val resolved = if (cached == null) withContext(Dispatchers.IO) { library.resolver.resolve(input.url) } else null
+                        val quality = library.preferences.current.downloadQuality
+                        val resolved = if (cached == null) withContext(Dispatchers.IO) { library.resolver.resolve(input.url, quality) } else null
                         if (version != playbackRequest) { result.success(null); return@launch }
                         val player = controller()
                         if (version != playbackRequest) { result.success(null); return@launch }
                         if (cached != null) {
                             library.playbackError = null
+                            library.resetOnlineTrack()
                             player.setMediaItem(library.mediaItem(cached))
                             player.prepare()
                             player.play()
-                        } else library.playOnline(resolved!!)
+                            if (auto) {
+                                library.startFadeIn()
+                            } else {
+                                library.cancelFade()
+                            }
+                        } else {
+                            library.playOnline(resolved!!)
+                            if (auto) {
+                                library.startFadeIn()
+                            } else {
+                                library.cancelFade()
+                            }
+                        }
                         result.success(null)
                     }
                     "createPlaylist" -> {
+                        notificationPermission()
                         val name = call.argument<String>("name") ?: ""
                         val track = call.argument<String>("trackId")
-                        if (track != null && library.find(track).state != Download.STATE_COMPLETED)
-                            throw SourceFailure("NOT_READY", "Hãy tải hoàn tất bài trước khi thêm vào playlist.")
-                        withContext(Dispatchers.IO) { library.playlists.create(name, track) }
+                        val url = call.argument<String>("url")
+                        val enqueue = call.argument<Boolean>("enqueueIfMissing") == true
+                        val created = withContext(Dispatchers.IO) {
+                            if (track != null || !url.isNullOrBlank()) {
+                                val validUrl = if (!url.isNullOrBlank()) {
+                                    runCatching { SourceUrl.parse(url).url }.getOrNull() ?: url
+                                } else null
+                                val quality = library.preferences.current.downloadQuality
+
+                                val resolved = if (validUrl != null) {
+                                    library.resolver.findOrResolve(track ?: "", validUrl, quality)
+                                } else if (track != null) {
+                                    runCatching { library.resolver.preview(track, quality) }.getOrNull()
+                                } else null
+
+                                val canonicalTrackId = resolved?.metadata?.id ?: track!!
+                                val download = library.findNullable(canonicalTrackId)
+
+                                if (download != null && download.state == Download.STATE_COMPLETED) {
+                                    library.playlists.create(name, canonicalTrackId)
+                                } else {
+                                    if (library.pendingPlaylists.entries.size >= 500 && !library.pendingPlaylists.has(canonicalTrackId, "")) {
+                                        throw SourceFailure("LIMIT", "Hàng chờ thêm vào playlist đã đầy (tối đa 500 bài).")
+                                    }
+                                    val playlist = library.playlists.create(name, null)
+                                    var pendingAdded = false
+                                    try {
+                                        library.pendingPlaylists.add(canonicalTrackId, playlist.id)
+                                        pendingAdded = true
+                                        if (enqueue && (download == null || download.state == Download.STATE_FAILED || download.state == Download.STATE_STOPPED)) {
+                                            if (resolved != null) {
+                                                library.enqueue(resolved)
+                                            } else {
+                                                val preview = library.resolver.findOrResolve(canonicalTrackId, validUrl, quality)
+                                                library.enqueue(preview)
+                                            }
+                                        }
+                                        playlist
+                                    } catch (e: Throwable) {
+                                        if (pendingAdded) {
+                                            library.pendingPlaylists.remove(canonicalTrackId, playlist.id)
+                                        }
+                                        library.playlists.delete(playlist.id)
+                                        throw e
+                                    }
+                                }
+                            } else {
+                                library.playlists.create(name, null)
+                            }
+                        }
+                        library.emit(); result.success(created.toMap())
+                    }
+                    "enqueueAndAddToPlaylist" -> {
+                        notificationPermission()
+                        val trackId = call.argument<String>("id")
+                        val playlistId = call.argument<String>("playlistId") ?: throw SourceFailure("INVALID_ARGUMENT", "Thiếu ID playlist.")
+                        val url = call.argument<String>("url")
+                        val validUrl = if (!url.isNullOrBlank()) {
+                            runCatching { SourceUrl.parse(url).url }.getOrNull() ?: url
+                        } else null
+                        val quality = library.preferences.current.downloadQuality
+
+                        val resolved = if (validUrl != null) {
+                            withContext(Dispatchers.IO) { library.resolver.findOrResolve(trackId ?: "", validUrl, quality) }
+                        } else if (trackId != null) {
+                            withContext(Dispatchers.IO) { runCatching { library.resolver.preview(trackId, quality) }.getOrNull() }
+                        } else null
+
+                        val canonicalTrackId = resolved?.metadata?.id ?: trackId ?: throw SourceFailure("INVALID_ARGUMENT", "Thiếu ID bài hát.")
+                        val download = library.findNullable(canonicalTrackId)
+
+                        if (download != null && download.state == Download.STATE_COMPLETED) {
+                            withContext(Dispatchers.IO) { library.playlists.add(playlistId, canonicalTrackId) }
+                        } else {
+                            if (library.pendingPlaylists.entries.size >= 500 && !library.pendingPlaylists.has(canonicalTrackId, playlistId)) {
+                                throw SourceFailure("LIMIT", "Hàng chờ thêm vào playlist đã đầy (tối đa 500 bài).")
+                            }
+                            val alreadyPending = library.pendingPlaylists.has(canonicalTrackId, playlistId)
+                            if (!alreadyPending) {
+                                library.pendingPlaylists.add(canonicalTrackId, playlistId)
+                            }
+                            if (download == null || download.state == Download.STATE_FAILED || download.state == Download.STATE_STOPPED) {
+                                try {
+                                    if (resolved != null) {
+                                        library.enqueue(resolved)
+                                    } else {
+                                        val track = withContext(Dispatchers.IO) { library.resolver.findOrResolve(canonicalTrackId, validUrl, quality) }
+                                        library.enqueue(track)
+                                    }
+                                } catch (e: Throwable) {
+                                    if (!alreadyPending) {
+                                        library.pendingPlaylists.remove(canonicalTrackId, playlistId)
+                                    }
+                                    throw e
+                                }
+                            }
+                        }
                         library.emit(); result.success(null)
                     }
                     "deletePlaylist" -> {
                         val playlist = call.argument<String>("playlistId") ?: ""
-                        withContext(Dispatchers.IO) { library.playlists.delete(playlist) }
+                        withContext(Dispatchers.IO) {
+                            library.playlists.delete(playlist)
+                            library.pendingPlaylists.removePlaylist(playlist)
+                        }
                         library.emit(); result.success(null)
                     }
                     "addToPlaylist", "removeFromPlaylist" -> {
@@ -317,10 +453,60 @@ class MainActivity : FlutterActivity(), EventChannel.StreamHandler {
                         library.emit(); result.success(null)
                     }
                     "setRepeatOne" -> {
-                        controller().repeatMode = if (call.argument<Boolean>("enabled") == true) {
-                            Player.REPEAT_MODE_ONE
-                        } else {
-                            Player.REPEAT_MODE_OFF
+                        val enabled = call.argument<Boolean>("enabled") == true
+                        val mode = if (enabled) "one" else "off"
+                        library.preferences.update(mapOf("repeatMode" to mode))
+                        if (enabled) {
+                            library.cancelFade()
+                        }
+                        val player = controller()
+                        player.repeatMode = if (enabled) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
+                        library.emit()
+                        result.success(null)
+                    }
+                    "setRepeatMode" -> {
+                        val mode = call.argument<String>("mode") ?: "off"
+                        library.preferences.update(mapOf("repeatMode" to mode))
+                        if (mode == "one") {
+                            library.cancelFade()
+                        }
+                        val player = controller()
+                        player.repeatMode = MusicLibrary.resolveExoPlayerRepeatMode(
+                            library.sourceQueueMode,
+                            library.onlineTrack != null,
+                            mode
+                        )
+                        library.emit()
+                        result.success(null)
+                    }
+                    "setShuffle" -> {
+                        val enabled = call.argument<Boolean>("enabled") ?: false
+                        library.preferences.update(mapOf("shuffle" to enabled))
+                        val player = controller()
+                        player.shuffleModeEnabled = MusicLibrary.resolveExoPlayerShuffleMode(
+                            library.sourceQueueMode,
+                            library.onlineTrack != null,
+                            enabled
+                        )
+                        library.emit()
+                        result.success(null)
+                    }
+                    "removeQueueItem" -> {
+                        val index = call.argument<Int>("index") ?: throw SourceFailure("INVALID", "Thiếu index.")
+                        val player = controller()
+                        if (index in 0 until player.mediaItemCount) {
+                            player.removeMediaItem(index)
+                            library.emit()
+                        }
+                        result.success(null)
+                    }
+                    "reorderQueue" -> {
+                        val oldIndex = call.argument<Int>("oldIndex") ?: throw SourceFailure("INVALID", "Thiếu oldIndex.")
+                        val newIndex = call.argument<Int>("newIndex") ?: throw SourceFailure("INVALID", "Thiếu newIndex.")
+                        val player = controller()
+                        if (oldIndex in 0 until player.mediaItemCount && newIndex in 0 until player.mediaItemCount) {
+                            player.moveMediaItem(oldIndex, newIndex)
+                            library.emit()
                         }
                         result.success(null)
                     }
@@ -383,6 +569,7 @@ class MainActivity : FlutterActivity(), EventChannel.StreamHandler {
                         result.success(null)
                     }
                     "togglePlay" -> {
+                        library.cancelFade()
                         val player = controller()
                         if (player.isPlaying) player.pause() else {
                             library.playbackError = null
@@ -423,19 +610,38 @@ class MainActivity : FlutterActivity(), EventChannel.StreamHandler {
                         result.success(null)
                     }
                     "seek" -> {
+                        library.cancelFade()
                         val player = controller()
                         val position = call.argument<Number>("positionMs")?.toLong() ?: 0
                         player.seekTo(position.coerceIn(0, player.duration.coerceAtLeast(0)))
                         result.success(null)
                     }
                     "skip" -> {
+                        library.cancelFade()
                         val player = controller()
                         if ((call.argument<Number>("direction")?.toInt() ?: 1) < 0) player.seekToPreviousMediaItem()
                         else player.seekToNextMediaItem()
                         result.success(null)
                     }
+                    "pause" -> {
+                        library.cancelFade()
+                        val player = controller()
+                        player.pause()
+                        library.pause()
+                        result.success(null)
+                    }
+                    "setSleepTimer" -> {
+                        val minutes = call.argument<Number>("minutes")?.toInt()
+                        val atEnd = call.argument<Boolean>("atEndOfTrack") ?: false
+                        library.setSleepTimer(minutes, atEnd)
+                        result.success(null)
+                    }
+                    "cancelSleepTimer" -> {
+                        library.cancelSleepTimer()
+                        result.success(null)
+                    }
                     "openWebsite" -> {
-                        val uri = Uri.parse("https://bc-music-gilt.vercel.app/")
+                        val uri = Uri.parse(BCMUSIC_ORIGIN_URL)
                         try { CustomTabsIntent.Builder().build().launchUrl(this@MainActivity, uri) }
                         catch (_: android.content.ActivityNotFoundException) {
                             startActivity(Intent(Intent.ACTION_VIEW, uri))
@@ -446,8 +652,15 @@ class MainActivity : FlutterActivity(), EventChannel.StreamHandler {
                 }
             } catch (e: CancellationException) { throw e
             } catch (e: SourceFailure) { result.error(e.code, e.message, null)
-            } catch (_: Exception) {
-                result.error("INTERNAL", "Chưa thực hiện được thao tác. Hãy mở lại app và thử lại.", null)
+            } catch (error: Exception) {
+                val isDebug = (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
+                if (isDebug) {
+                    android.util.Log.e("BCMusic", "Method ${call.method} failed", error)
+                } else {
+                    android.util.Log.e("BCMusic", "Method ${call.method} failed: ${error.javaClass.simpleName}: ${error.message}")
+                }
+                val (code, message) = mapExceptionToFlutterError(error)
+                result.error(code, message, error.javaClass.simpleName)
             }
         }
     }
@@ -470,6 +683,32 @@ class MainActivity : FlutterActivity(), EventChannel.StreamHandler {
         }, ContextCompat.getMainExecutor(this))
     }
 
+    private fun lyricsPrefs() = getSharedPreferences("bcmusic-lyrics-cache", android.content.Context.MODE_PRIVATE)
+
+    private fun saveLyrics(trackId: String, data: String) {
+        val prefs = lyricsPrefs()
+        val order = prefs.getString("__order", "")?.split(",")?.filter { it.isNotBlank() }?.toMutableList() ?: mutableListOf()
+        order.remove(trackId)
+        order.add(0, trackId)
+        val editor = prefs.edit()
+        editor.putString(trackId, data)
+        while (order.size > 200) {
+            val oldest = order.removeAt(order.size - 1)
+            editor.remove(oldest)
+        }
+        editor.putString("__order", order.joinToString(","))
+        editor.apply()
+    }
+
+    private fun getLyrics(trackId: String): String? = lyricsPrefs().getString(trackId, null)
+
+    private fun removeLyrics(trackId: String) {
+        val prefs = lyricsPrefs()
+        val order = prefs.getString("__order", "")?.split(",")?.filter { it.isNotBlank() }?.toMutableList() ?: mutableListOf()
+        order.remove(trackId)
+        prefs.edit().remove(trackId).putString("__order", order.joinToString(",")).apply()
+    }
+
     override fun onDestroy() {
         library.unsubscribe(listener)
         sink = null
@@ -478,4 +717,17 @@ class MainActivity : FlutterActivity(), EventChannel.StreamHandler {
         controllerFuture = null
         super.onDestroy()
     }
+
+    companion object {
+        fun mapExceptionToFlutterError(error: Exception): Pair<String, String> =
+            app.bcmusic.personal.mapExceptionToFlutterError(error)
+    }
+}
+
+internal fun mapExceptionToFlutterError(error: Exception): Pair<String, String> = when (error) {
+    is SourceFailure -> error.code to error.message
+    is java.net.UnknownHostException,
+    is java.net.ConnectException,
+    is java.net.SocketTimeoutException -> "NETWORK" to "Không có kết nối mạng. Hãy kiểm tra kết nối và thử lại."
+    else -> "INTERNAL" to "Chưa thực hiện được thao tác. Hãy mở lại app và thử lại."
 }

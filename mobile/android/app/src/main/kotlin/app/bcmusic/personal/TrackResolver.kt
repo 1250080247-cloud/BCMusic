@@ -14,20 +14,34 @@ class TrackResolver {
 
     init { NewPipe.init(SourceDownloader()) }
 
-    fun resolve(input: String, compact: Boolean = false): ResolvedTrack {
+    fun resolve(input: String, quality: String = "standard", compact: Boolean = false): ResolvedTrack {
+        val effectiveQuality = if (compact && quality == "standard") "economy" else quality
         val source = SourceUrl.parse(input)
         try {
-            if (source.provider == "soundcloud") return SoundCloudResolver().resolve(source, compact)
-                .also { if (!compact) previews[it.metadata.id] = it }
+            if (source.provider == "soundcloud") return SoundCloudResolver().resolve(source, effectiveQuality)
+                .also { previews[it.metadata.id] = it }
             val info = StreamInfo.getInfo(source.url)
             if (info.duration <= 0) throw SourceFailure("UNSUPPORTED", "Chỉ hỗ trợ bài có thời lượng xác định, chưa hỗ trợ livestream.")
             val streams = info.audioStreams.filter { it.isUrl && it.deliveryMethod in
                 listOf(DeliveryMethod.PROGRESSIVE_HTTP, DeliveryMethod.HLS) }
-            val compactStream = if (compact) streams.filter { it.averageBitrate in 48..96 }
-                .maxByOrNull { it.averageBitrate } else null
-            val stream = compactStream ?: streams.filter { it.averageBitrate in 1..192 }.maxByOrNull { it.averageBitrate }
-                ?: streams.minByOrNull { if (it.averageBitrate > 0) it.averageBitrate else Int.MAX_VALUE }
-                ?: throw SourceFailure("UNSUPPORTED", "Nguồn này chưa cung cấp âm thanh có thể tải.")
+            val stream = when (effectiveQuality) {
+                "economy" -> {
+                    streams.filter { it.averageBitrate in 40..80 }.maxByOrNull { it.averageBitrate }
+                        ?: streams.filter { it.averageBitrate in 1..96 }.minByOrNull { if (it.averageBitrate > 0) it.averageBitrate else Int.MAX_VALUE }
+                        ?: streams.filter { it.averageBitrate in 1..140 }.maxByOrNull { it.averageBitrate }
+                        ?: streams.firstOrNull()
+                }
+                "high" -> {
+                    streams.filter { it.averageBitrate in 140..256 }.maxByOrNull { it.averageBitrate }
+                        ?: streams.filter { it.averageBitrate in 1..192 }.maxByOrNull { it.averageBitrate }
+                        ?: streams.firstOrNull()
+                }
+                else -> {
+                    streams.filter { it.averageBitrate in 96..140 }.maxByOrNull { it.averageBitrate }
+                        ?: streams.filter { it.averageBitrate in 1..192 }.maxByOrNull { it.averageBitrate }
+                        ?: streams.firstOrNull()
+                }
+            } ?: throw SourceFailure("UNSUPPORTED", "Nguồn này chưa cung cấp âm thanh có thể tải.")
             SourceNetwork.validate(stream.content.toHttpUrl())
             val canonical = SourceUrl.parse(info.url)
             if (canonical.provider != source.provider || !Regex("^[A-Za-z0-9_-]{1,128}$").matches(info.id)) {
@@ -36,9 +50,13 @@ class TrackResolver {
             val metadata = TrackMetadata("${source.provider}_${info.id}",
                 info.name.take(500), info.uploaderName.take(300), canonical.url,
                 source.provider, info.duration * 1000)
-            return ResolvedTrack(metadata, stream.content,
-                if (stream.deliveryMethod == DeliveryMethod.HLS) "application/x-mpegURL" else stream.format?.mimeType,
-                info.thumbnails.maxByOrNull { it.width.coerceAtLeast(0).toLong() * it.height.coerceAtLeast(0) }?.url).also { if (!compact) previews[metadata.id] = it }
+            return ResolvedTrack(
+                metadata = metadata,
+                streamUrl = stream.content,
+                mimeType = if (stream.deliveryMethod == DeliveryMethod.HLS) "application/x-mpegURL" else stream.format?.mimeType,
+                artworkUrl = info.thumbnails.maxByOrNull { it.width.coerceAtLeast(0).toLong() * it.height.coerceAtLeast(0) }?.url,
+                quality = effectiveQuality
+            ).also { previews[metadata.id] = it }
         } catch (e: SourceFailure) { throw e
         } catch (e: ReCaptchaException) {
             throw SourceFailure("UNAVAILABLE", "Nguồn đang yêu cầu xác minh. Hãy thử lại sau.", e)
@@ -51,7 +69,22 @@ class TrackResolver {
         }
     }
 
-    fun preview(id: String): ResolvedTrack = previews[id]?.let {
-        if (System.currentTimeMillis() - it.resolvedAt < 60_000) it else resolve(it.metadata.sourceUrl)
+    fun preview(id: String, quality: String = "standard"): ResolvedTrack = previews[id]?.let {
+        if (it.quality == quality && System.currentTimeMillis() - it.resolvedAt < 60_000) it else resolve(it.metadata.sourceUrl, quality)
     } ?: throw SourceFailure("NOT_FOUND", "Thông tin bài đã hết hạn. Hãy mở link lại.")
+
+    fun findOrResolve(id: String, url: String? = null, quality: String = "standard"): ResolvedTrack {
+        val existing = previews[id]
+        if (existing != null) {
+            return if (existing.quality == quality && System.currentTimeMillis() - existing.resolvedAt < 60_000) {
+                existing
+            } else {
+                resolve(existing.metadata.sourceUrl, quality)
+            }
+        }
+        if (url != null) {
+            return resolve(url, quality)
+        }
+        return preview(id, quality)
+    }
 }

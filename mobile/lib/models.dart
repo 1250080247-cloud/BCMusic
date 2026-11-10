@@ -1,3 +1,5 @@
+import 'app_config.dart';
+
 class SourceLink {
   const SourceLink(this.url, this.provider);
   final String url;
@@ -143,12 +145,16 @@ class PlaybackState {
     this.offline = true,
     this.hasNext = false,
     this.hasPrevious = false,
+    this.repeatMode = 'off',
+    this.shuffle = false,
   });
   final String? trackId, error;
   final bool isPlaying, ended;
   final int positionMs, durationMs;
   final OfflineTrack? track;
   final bool offline, hasNext, hasPrevious;
+  final String repeatMode;
+  final bool shuffle;
 
   factory PlaybackState.fromMap(Map<Object?, Object?> map) => PlaybackState(
     trackId: map['trackId'] as String?,
@@ -163,6 +169,8 @@ class PlaybackState {
     offline: map['offline'] != false,
     hasNext: map['hasNext'] == true,
     hasPrevious: map['hasPrevious'] == true,
+    repeatMode: (map['repeatMode'] as String?) ?? 'off',
+    shuffle: map['shuffle'] == true,
   );
 }
 
@@ -265,7 +273,7 @@ class AccountProfile {
         !RegExp(r'^[a-f0-9]{24}$', caseSensitive: false).hasMatch(userId)) {
       return null;
     }
-    return Uri.https('bc-music-gilt.vercel.app', '/api/user/avatar', {
+    return BCMusicConfig.websiteUri('/api/user/avatar', {
       'userId': userId,
       if (avatarVersion?.isNotEmpty == true) 'v': avatarVersion!,
     });
@@ -288,20 +296,35 @@ class AppPreferences {
     this.volume = 100,
     this.speed = 1,
     this.motion = true,
+    this.repeatMode = 'off',
+    this.shuffle = false,
+    this.downloadQuality = 'standard',
+    this.crossfade = false,
   });
 
   final bool light, motion;
   final int volume;
   final double speed;
+  final String repeatMode;
+  final bool shuffle;
+  final String downloadQuality;
+  final bool crossfade;
   static const speeds = [0.75, 1.0, 1.25, 1.5, 2.0];
+  static const downloadQualities = ['economy', 'standard', 'high'];
 
   factory AppPreferences.fromMap(Map<Object?, Object?> data) {
     final speed = (data['speed'] as num?)?.toDouble();
+    final repeat = data['repeatMode'] as String?;
+    final quality = data['downloadQuality'] as String?;
     return AppPreferences(
       light: data['light'] == true,
       volume: ((data['volume'] as num?)?.toInt() ?? 100).clamp(0, 100),
       speed: speeds.contains(speed) ? speed! : 1,
       motion: data['motion'] != false,
+      repeatMode: (repeat == 'all' || repeat == 'one') ? repeat! : 'off',
+      shuffle: data['shuffle'] == true,
+      downloadQuality: downloadQualities.contains(quality) ? quality! : 'standard',
+      crossfade: data['crossfade'] == true,
     );
   }
 }
@@ -326,4 +349,60 @@ class LocalPlaylist {
 String formatTime(int milliseconds) {
   final seconds = milliseconds ~/ 1000;
   return '${seconds ~/ 60}:${(seconds % 60).toString().padLeft(2, '0')}';
+}
+
+String deriveTrackId(String url) {
+  try {
+    final link = SourceLink.parse(url);
+    if (link.provider == 'youtube') {
+      final uri = Uri.parse(link.url);
+      final v = uri.queryParameters['v'];
+      if (v != null && v.isNotEmpty) return 'youtube_$v';
+    }
+    return '${link.provider}_${url.hashCode.abs()}';
+  } catch (_) {
+    return 'youtube_${url.hashCode.abs()}';
+  }
+}
+
+class AccountPlaylist {
+  const AccountPlaylist(this.id, this.name, this.songs);
+  final String id, name;
+  final Map<String, PlaybackQueueItem> songs;
+
+  static List<AccountPlaylist> readAll(Object? data) => data is List
+      ? [
+          for (final row in data.whereType<Map>())
+            if (row['id'] case final String id when id.isNotEmpty)
+              AccountPlaylist(id, row['name']?.toString() ?? 'Playlist', {
+                if (row['songs'] case final List songs)
+                  for (final song in songs.whereType<Map>())
+                    if (song['id'] case final String songId)
+                      songId: ?readAccountSong(song),
+              }),
+        ]
+      : [];
+}
+
+PlaybackQueueItem? readAccountSong(Map row) {
+  final id = row['id'];
+  final source = row['sourceUrl'];
+  final url = source is String && source.isNotEmpty
+      ? source
+      : id is String && RegExp(r'^[A-Za-z0-9_-]{11}$').hasMatch(id)
+      ? 'https://www.youtube.com/watch?v=$id'
+      : null;
+  if (url == null) return null;
+  try {
+    return PlaybackQueueItem(
+      url: SourceLink.parse(url).url,
+      title: row['title'] is String ? row['title'] as String : 'Bài hát',
+      artist: row['artist'] is String ? row['artist'] as String : '',
+      artworkUrl: row['thumbnail'] is String
+          ? row['thumbnail'] as String
+          : null,
+    );
+  } on FormatException {
+    return null;
+  }
 }

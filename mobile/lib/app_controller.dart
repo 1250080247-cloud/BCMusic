@@ -1,8 +1,10 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
+import 'lyrics.dart';
 import 'models.dart';
 import 'platform_bridge.dart';
 
@@ -19,6 +21,8 @@ class MusicController extends ChangeNotifier {
   int _playRequest = 0;
   (List<String>, int)? _sourceQueue;
   List<PlaybackQueueItem> _sourceQueueItems = const [];
+  (List<String>, int)? _originalSourceQueue;
+  List<PlaybackQueueItem>? _originalSourceQueueItems;
   List<PlaybackQueueItem> get sourceQueueItems => _sourceQueueItems;
   int? get sourceQueueIndex => _sourceQueue?.$2;
   List<String>? _offlineQueueIds;
@@ -44,6 +48,13 @@ class MusicController extends ChangeNotifier {
       if (urls.contains(item.url)) return false;
       _sourceQueue = ([...urls, item.url], index);
       _sourceQueueItems = [..._sourceQueueItems, item];
+      if (_originalSourceQueue != null && _originalSourceQueueItems != null) {
+        _originalSourceQueue = (
+          [..._originalSourceQueue!.$1, item.url],
+          _originalSourceQueue!.$2,
+        );
+        _originalSourceQueueItems = [..._originalSourceQueueItems!, item];
+      }
     } else if (current != null) {
       final ready = {
         if (playback.offline)
@@ -60,11 +71,12 @@ class MusicController extends ChangeNotifier {
       if (currentIndex < 0) entries.insert(0, current);
       if (entries.any((entry) => entry.url == item.url)) return false;
       entries.add(item);
-      _sourceQueue = (
-        entries.map((entry) => entry.url).toList(),
-        currentIndex < 0 ? 0 : currentIndex,
-      );
+      final entryUrls = entries.map((entry) => entry.url).toList();
+      final currentPos = currentIndex < 0 ? 0 : currentIndex;
+      _sourceQueue = (entryUrls, currentPos);
       _sourceQueueItems = entries;
+      _originalSourceQueue = (List.of(entryUrls), currentPos);
+      _originalSourceQueueItems = List.of(entries);
     } else {
       if (_queuedBeforePlayback.any((entry) => entry.url == item.url)) {
         return false;
@@ -73,6 +85,99 @@ class MusicController extends ChangeNotifier {
     }
     _notify();
     return true;
+  }
+
+  late final LyricsRepository lyricsRepository =
+      LyricsRepository(platform: platform);
+
+  Future<void> prefetchLyrics(OfflineTrack track) async {
+    try {
+      await lyricsRepository.getLyrics(
+        trackId: track.id,
+        rawTitle: track.title,
+        rawArtist: track.artist,
+        durationMs: track.durationMs,
+      );
+    } catch (_) {}
+  }
+
+  Timer? _sleepTimer;
+  DateTime? _sleepTimerEnd;
+  int? _sleepTimerMinutes;
+  bool _sleepAtEndOfTrack = false;
+  String? _sleepTargetTrackId;
+
+  bool get sleepTimerActive => _sleepTimerEnd != null || _sleepAtEndOfTrack;
+  int? get sleepTimerMinutes => _sleepTimerMinutes;
+  bool get sleepAtEndOfTrack => _sleepAtEndOfTrack;
+  Duration? get sleepTimerRemaining {
+    if (_sleepTimerEnd == null) return null;
+    final diff = _sleepTimerEnd!.difference(DateTime.now());
+    return diff.isNegative ? Duration.zero : diff;
+  }
+
+  void setSleepTimer(int? minutes, {bool atEndOfTrack = false}) {
+    _sleepTimer?.cancel();
+    _sleepTimer = null;
+    if (atEndOfTrack) {
+      _sleepAtEndOfTrack = true;
+      _sleepTimerMinutes = null;
+      _sleepTimerEnd = null;
+      _sleepTargetTrackId = playback.trackId;
+      unawaited(platform.setSleepTimer(null, atEndOfTrack: true));
+      _notify();
+      return;
+    }
+    if (minutes != null) {
+      _sleepAtEndOfTrack = false;
+      _sleepTimerMinutes = minutes;
+      _sleepTimerEnd = DateTime.now().add(Duration(minutes: minutes));
+      unawaited(platform.setSleepTimer(minutes, atEndOfTrack: false));
+      _sleepTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+        checkSleepTimer();
+      });
+      _notify();
+      return;
+    }
+    cancelSleepTimer();
+  }
+
+  void cancelSleepTimer() {
+    _sleepTimer?.cancel();
+    _sleepTimer = null;
+    _sleepTimerEnd = null;
+    _sleepTimerMinutes = null;
+    _sleepAtEndOfTrack = false;
+    _sleepTargetTrackId = null;
+    unawaited(platform.cancelSleepTimer());
+    _notify();
+  }
+
+  bool checkSleepTimer() {
+    if (!sleepTimerActive) return false;
+
+    bool shouldStop = false;
+
+    if (_sleepAtEndOfTrack) {
+      if ((_sleepTargetTrackId != null && playback.trackId != _sleepTargetTrackId) ||
+          playback.ended) {
+        shouldStop = true;
+      }
+    } else if (_sleepTimerEnd != null) {
+      if (!DateTime.now().isBefore(_sleepTimerEnd!)) {
+        shouldStop = true;
+      }
+    }
+
+    if (shouldStop) {
+      _handledEnd = playback.trackId ?? _sleepTargetTrackId;
+      unawaited(platform.pause());
+      cancelSleepTimer();
+      return true;
+    } else {
+      _notify();
+      return false;
+    }
   }
 
   bool _disposed = false;
@@ -117,6 +222,19 @@ class MusicController extends ChangeNotifier {
 
   void _accept(LibrarySnapshot next) {
     if (_disposed) return;
+    if (next.preferences.repeatMode != snapshot.preferences.repeatMode) {
+      repeatMode = next.preferences.repeatMode;
+    }
+    if (next.preferences.shuffle != snapshot.preferences.shuffle) {
+      shuffle = next.preferences.shuffle;
+      if (_sourceQueue != null) {
+        if (shuffle) {
+          _applyOnlineShuffle();
+        } else {
+          _restoreOnlineOrder();
+        }
+      }
+    }
     snapshot = next;
     final account = next.account;
     final key = account?.id ?? account?.username;
@@ -133,14 +251,20 @@ class MusicController extends ChangeNotifier {
         if (actual >= 0 && actual != index) _sourceQueue = (urls, actual);
       }
     }
-    if (!openingSource &&
+    final stoppedByTimer = checkSleepTimer();
+    if (!stoppedByTimer &&
+        !openingSource &&
         !repeatOne &&
         next.playback.ended &&
         _sourceQueue != null &&
-        canSkip(1) &&
         _handledEnd != next.playback.trackId) {
-      _handledEnd = next.playback.trackId;
-      unawaited(skip(1));
+      if (canSkip(1)) {
+        _handledEnd = next.playback.trackId;
+        unawaited(skip(1, autoTransition: true));
+      } else if (repeatMode == 'all' && _sourceQueueItems.isNotEmpty) {
+        _handledEnd = next.playback.trackId;
+        unawaited(skipToQueueIndex(0, autoTransition: true));
+      }
     }
     lightTheme.value = next.preferences.light;
     loading = !next.initialized;
@@ -187,6 +311,7 @@ class MusicController extends ChangeNotifier {
     downloading = true;
     _notify();
     if (await _perform(() => platform.enqueue(track.id))) {
+      unawaited(prefetchLyrics(track));
       // A new preview can arrive while Android accepts this request.
       if (preview?.id == track.id) preview = null;
     }
@@ -213,6 +338,8 @@ class MusicController extends ChangeNotifier {
       if (request == _playRequest) {
         _sourceQueue = null;
         _sourceQueueItems = const [];
+        _originalSourceQueue = null;
+        _originalSourceQueueItems = null;
         _offlineQueueIds = queueIds;
         final pending = List<PlaybackQueueItem>.of(_queuedBeforePlayback);
         _queuedBeforePlayback.clear();
@@ -283,18 +410,32 @@ class MusicController extends ChangeNotifier {
     String url,
     (List<String>, int)? selection, {
     List<PlaybackQueueItem>? queueItems,
+    bool autoTransition = false,
   }) async {
     final request = ++_playRequest;
     openingSource = true;
     error = null;
     _notify();
     try {
-      await platform.playSource(url);
+      await platform.playSource(url, autoTransition: autoTransition);
       if (request == _playRequest) {
+        final isAdvancingSameQueue = _sourceQueue != null &&
+            selection != null &&
+            _sourceQueue!.$1.length == selection.$1.length &&
+            _sourceQueue!.$1.firstOrNull == selection.$1.firstOrNull;
+
         _sourceQueue = selection;
         _sourceQueueItems = selection == null
             ? const []
             : queueItems ?? _sourceQueueItems;
+
+        if (!isAdvancingSameQueue) {
+          _originalSourceQueue = _sourceQueue;
+          _originalSourceQueueItems = List.of(_sourceQueueItems);
+          if (shuffle && _sourceQueue != null) {
+            _applyOnlineShuffle();
+          }
+        }
       }
     } catch (e) {
       if (request == _playRequest) _setError(e);
@@ -306,9 +447,50 @@ class MusicController extends ChangeNotifier {
     }
   }
 
-  Future<void> createPlaylist(String name, {OfflineTrack? initialTrack}) async {
+  Future<void> createPlaylist(
+    String name, {
+    OfflineTrack? initialTrack,
+    String? trackId,
+    String? url,
+    bool enqueueIfMissing = false,
+  }) async {
+    final id = initialTrack?.id ?? trackId;
+    final trackUrl = url ?? initialTrack?.sourceUrl;
     await _perform(
-      () => platform.createPlaylist(name, trackId: initialTrack?.id),
+      () => platform.createPlaylist(
+        name,
+        trackId: id,
+        url: trackUrl,
+        enqueueIfMissing: enqueueIfMissing,
+      ),
+    );
+  }
+
+  Future<void> enqueueAndAddToPlaylist(
+    String playlistId,
+    String trackId, {
+    String? url,
+  }) async {
+    await _perform(
+      () => platform.enqueueAndAddToPlaylist(playlistId, trackId, url: url),
+    );
+  }
+
+  Future<void> playAccountPlaylist(
+    AccountPlaylist playlist, {
+    bool shuffle = false,
+  }) async {
+    final items = playlist.songs.values.toList();
+    if (items.isEmpty) return;
+    final queue = List<PlaybackQueueItem>.from(items);
+    if (shuffle) {
+      queue.shuffle();
+    }
+    final first = queue.first;
+    await playSource(
+      first.url,
+      queue: queue.map((e) => e.url),
+      queueItems: queue,
     );
   }
 
@@ -426,14 +608,241 @@ class MusicController extends ChangeNotifier {
     }
   }
 
-  bool repeatOne = false;
-  Future<void> toggleRepeat() async {
-    final target = !repeatOne;
-    if (platform case final AndroidMusicPlatform android) {
-      if (!await _perform(() => android.setRepeatOne(target))) return;
-    }
-    repeatOne = target;
+  String repeatMode = 'off'; // 'off', 'all', 'one'
+  bool shuffle = false;
+
+  bool get repeatOne => repeatMode == 'one';
+  bool get repeatAll => repeatMode == 'all';
+
+  Future<void> setRepeatMode(String mode) async {
+    final valid = (mode == 'all' || mode == 'one') ? mode : 'off';
+    if (!await _perform(() => platform.setRepeatMode(valid))) return;
+    repeatMode = valid;
     _notify();
+  }
+
+  Future<void> cycleRepeatMode() async {
+    final next = switch (repeatMode) {
+      'off' => 'all',
+      'all' => 'one',
+      _ => 'off',
+    };
+    await setRepeatMode(next);
+  }
+
+  Future<void> toggleRepeat() => cycleRepeatMode();
+
+  Future<void> setShuffle(bool enabled) async {
+    if (!await _perform(() => platform.setShuffle(enabled))) return;
+    shuffle = enabled;
+    if (_sourceQueue != null) {
+      if (enabled) {
+        _applyOnlineShuffle();
+      } else {
+        _restoreOnlineOrder();
+      }
+    }
+    _notify();
+  }
+
+  Future<void> toggleShuffle() => setShuffle(!shuffle);
+
+  void _applyOnlineShuffle({math.Random? random}) {
+    if (_sourceQueue case (final urls, final currentIdx)) {
+      if (urls.length <= 1) return;
+      if (_originalSourceQueue == null || _originalSourceQueueItems == null) {
+        _originalSourceQueue = (List.of(urls), currentIdx);
+        _originalSourceQueueItems = List.of(_sourceQueueItems);
+      }
+      final currentItem = _sourceQueueItems[currentIdx];
+      final currentUrl = urls[currentIdx];
+
+      final beforeItems = _sourceQueueItems.sublist(0, currentIdx);
+      final beforeUrls = urls.sublist(0, currentIdx);
+
+      final upcomingItems = List<PlaybackQueueItem>.from(_sourceQueueItems.sublist(currentIdx + 1));
+      if (upcomingItems.length > 1) {
+        final original = List.of(upcomingItems);
+        upcomingItems.shuffle(random);
+        if (_queueItemsEqual(upcomingItems, original)) {
+          final first = upcomingItems.removeAt(0);
+          upcomingItems.insert(1, first);
+        }
+      }
+      _sourceQueue = ([...beforeUrls, currentUrl, ...upcomingItems.map((e) => e.url)], currentIdx);
+      _sourceQueueItems = [...beforeItems, currentItem, ...upcomingItems];
+    }
+  }
+
+  void _restoreOnlineOrder() {
+    if (_originalSourceQueueItems != null && _originalSourceQueue != null && _sourceQueue != null) {
+      final currentUrl = _sourceQueue!.$1[_sourceQueue!.$2];
+      final origIdx = _originalSourceQueueItems!.indexWhere((it) => it.url == currentUrl);
+      if (origIdx >= 0) {
+        _sourceQueue = (_originalSourceQueue!.$1, origIdx);
+        _sourceQueueItems = List.of(_originalSourceQueueItems!);
+      }
+    }
+  }
+
+  bool _queueItemsEqual(List<PlaybackQueueItem> a, List<PlaybackQueueItem> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i].url != b[i].url) return false;
+    }
+    return true;
+  }
+
+  Future<void> skipToQueueIndex(int targetIndex, {bool autoTransition = false}) async {
+    if (_sourceQueue case (final queue, _)) {
+      if (targetIndex >= 0 && targetIndex < queue.length) {
+        await _openSource(
+          queue[targetIndex],
+          (queue, targetIndex),
+          queueItems: _sourceQueueItems,
+          autoTransition: autoTransition,
+        );
+      }
+    } else if (playback.offline) {
+      final ready = tracks.where((item) => item.isReady).toList();
+      final ids = _offlineQueueIds ?? ready.map((t) => t.id).toList();
+      if (targetIndex >= 0 && targetIndex < ids.length) {
+        final track = ready.where((t) => t.id == ids[targetIndex]).firstOrNull;
+        if (track != null) {
+          await play(track, queueIds: ids);
+        }
+      }
+    }
+  }
+
+  void removeQueueItem(int index) {
+    if (_sourceQueue case (final urls, final currentIdx)) {
+      if (index < 0 || index >= urls.length) return;
+      if (urls.length <= 1) return;
+      final removedUrl = urls[index];
+      final newUrls = List<String>.from(urls)..removeAt(index);
+      final newItems = List<PlaybackQueueItem>.from(_sourceQueueItems)..removeAt(index);
+      int newIndex = currentIdx;
+      if (index < currentIdx) {
+        newIndex = currentIdx - 1;
+      } else if (index == currentIdx) {
+        newIndex = currentIdx.clamp(0, newUrls.length - 1);
+      }
+      _sourceQueue = (newUrls, newIndex);
+      _sourceQueueItems = newItems;
+      if (_originalSourceQueue != null && _originalSourceQueueItems != null) {
+        final origUrls = List<String>.from(_originalSourceQueue!.$1);
+        final origItems = List<PlaybackQueueItem>.from(_originalSourceQueueItems!);
+        final oIdx = origUrls.indexOf(removedUrl);
+        if (oIdx >= 0) {
+          origUrls.removeAt(oIdx);
+          origItems.removeAt(oIdx);
+          int newOrigIdx = _originalSourceQueue!.$2;
+          if (oIdx < newOrigIdx) {
+            newOrigIdx = (newOrigIdx - 1).clamp(0, origUrls.length - 1);
+          } else if (oIdx == newOrigIdx) {
+            newOrigIdx = newOrigIdx.clamp(0, origUrls.length - 1);
+          }
+          _originalSourceQueue = (origUrls, newOrigIdx);
+          _originalSourceQueueItems = origItems;
+        }
+      }
+      _notify();
+    } else if (playback.offline) {
+      final ready = {
+        for (final item in tracks.where((item) => item.isReady)) item.id: item,
+      };
+      final ids = _offlineQueueIds ?? ready.keys.toList();
+      if (index >= 0 && index < ids.length && ids.length > 1) {
+        final newIds = List<String>.from(ids)..removeAt(index);
+        _offlineQueueIds = newIds;
+        unawaited(_perform(() => platform.removeQueueItem(index)));
+        _notify();
+      }
+    }
+  }
+
+  void reorderUpcomingQueue(int oldRelativeIndex, int newRelativeIndex) {
+    if (_sourceQueue case (final urls, final currentIdx)) {
+      var targetNew = newRelativeIndex;
+      if (oldRelativeIndex < targetNew) {
+        targetNew -= 1;
+      }
+      final offset = currentIdx + 1;
+      final oldAbs = offset + oldRelativeIndex;
+      final newAbs = offset + targetNew;
+      if (oldAbs >= offset &&
+          oldAbs < urls.length &&
+          newAbs >= offset &&
+          newAbs < urls.length) {
+        final newUrls = List<String>.from(urls);
+        final newItems = List<PlaybackQueueItem>.from(_sourceQueueItems);
+        final movedUrl = newUrls.removeAt(oldAbs);
+        final movedItem = newItems.removeAt(oldAbs);
+        newUrls.insert(newAbs, movedUrl);
+        newItems.insert(newAbs, movedItem);
+        _sourceQueue = (newUrls, currentIdx);
+        _sourceQueueItems = newItems;
+        _notify();
+      }
+    } else if (playback.offline) {
+      final ready = {
+        for (final item in tracks.where((item) => item.isReady)) item.id: item,
+      };
+      final ids = _offlineQueueIds ?? ready.keys.toList();
+      final currentIdx = ids.indexOf(playback.trackId ?? '');
+      if (currentIdx >= 0) {
+        var targetNew = newRelativeIndex;
+        if (oldRelativeIndex < targetNew) {
+          targetNew -= 1;
+        }
+        final offset = currentIdx + 1;
+        final oldAbs = offset + oldRelativeIndex;
+        final newAbs = offset + targetNew;
+        if (oldAbs >= offset &&
+            oldAbs < ids.length &&
+            newAbs >= offset &&
+            newAbs < ids.length) {
+          final newIds = List<String>.from(ids);
+          final movedId = newIds.removeAt(oldAbs);
+          newIds.insert(newAbs, movedId);
+          _offlineQueueIds = newIds;
+          unawaited(_perform(() => platform.reorderQueue(oldAbs, newAbs)));
+          _notify();
+        }
+      }
+    }
+  }
+
+  List<PlaybackQueueItem> get currentQueueItems {
+    if (_sourceQueueItems.isNotEmpty) {
+      return _sourceQueueItems;
+    }
+    if (playback.offline) {
+      final ready = {
+        for (final item in tracks.where((item) => item.isReady))
+          item.id: item,
+      };
+      final ids = _offlineQueueIds ?? ready.keys;
+      return [
+        for (final id in ids)
+          if (ready[id] case final item?) ?_queueItemFor(item),
+      ];
+    }
+    return const [];
+  }
+
+  int? get currentQueueIndex {
+    if (_sourceQueue != null) {
+      return _sourceQueue!.$2;
+    }
+    if (playback.offline) {
+      final items = currentQueueItems;
+      final currentUrl = playback.track?.sourceUrl;
+      final idx = items.indexWhere((item) => item.url == currentUrl);
+      return idx >= 0 ? idx : 0;
+    }
+    return null;
   }
 
   Future<bool> exportCoverMp4(String url, String title) async {
@@ -458,14 +867,16 @@ class MusicController extends ChangeNotifier {
     await _perform(() => platform.seek(positionMs));
   }
 
-  Future<void> skip(int direction) async {
+  Future<void> skip(int direction, {bool autoTransition = false}) async {
     if (!canSkip(direction)) return;
     if (_sourceQueue case (final queue, final index)) {
       final target = index + direction;
-      await _openSource(queue[target], (
-        queue,
-        target,
-      ), queueItems: _sourceQueueItems);
+      await _openSource(
+        queue[target],
+        (queue, target),
+        queueItems: _sourceQueueItems,
+        autoTransition: autoTransition,
+      );
     } else {
       await _perform(() => platform.skip(direction));
     }
@@ -538,6 +949,8 @@ class MusicController extends ChangeNotifier {
   void dispose() {
     _disposed = true;
     _request++;
+    _sleepTimer?.cancel();
+    lyricsRepository.dispose();
     lightTheme.dispose();
     unawaited(_subscription?.cancel());
     super.dispose();

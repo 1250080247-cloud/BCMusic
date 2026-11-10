@@ -84,13 +84,15 @@ internal class SecureAccountStorage(context: Context) : AccountStorage {
     }
 }
 
+internal const val BCMUSIC_ORIGIN_URL = "https://bc-music-gilt.vercel.app/"
+
 internal class AccountClient(
     private val storage: AccountStorage,
     private val transport: OkHttpClient = OkHttpClient(),
 ) {
     @Volatile var profile: AccountProfile? = null
         private set
-    private val origin = "https://bc-music-gilt.vercel.app/".toHttpUrl()
+    private val origin = BCMUSIC_ORIGIN_URL.toHttpUrl()
     private val tokenPattern = Regex("^(?:__Secure-)?next-auth\\.session-token(?:\\.\\d+)?$")
     private val proofPattern = Regex("^[A-Za-z0-9_-]{43}$")
     private val usernamePattern = Regex("^[a-z0-9_.]{3,30}$")

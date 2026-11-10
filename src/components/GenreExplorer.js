@@ -225,8 +225,12 @@ export default function GenreExplorer() {
   const [songs, setSongs] = useState([]);
   const [newestSongs, setNewestSongs] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [mounted, setMounted] = useState(false);
   const requestRef = useRef(null);
-  useEffect(() => () => requestRef.current?.abort(), []);
+  useEffect(() => {
+    setMounted(true);
+    return () => requestRef.current?.abort();
+  }, []);
 
   const handleSelect = useCallback(async (item) => {
     requestRef.current?.abort();
@@ -256,10 +260,6 @@ export default function GenreExplorer() {
     }
   }, [selected]);
 
-  const section = {
-    maxWidth: '80rem', margin: '0 auto',
-    padding: '0 1.5rem 2.5rem',
-  };
   const divider = {
     height: 1, background: 'rgba(148,163,184,0.16)',
     margin: '2rem 0',
@@ -292,7 +292,11 @@ export default function GenreExplorer() {
         }
       `}</style>
 
-      <section data-motion-section style={section}>
+      <section
+        {...(mounted ? { 'data-motion-section': '' } : {})}
+        className="genre-explorer mx-auto max-w-[80rem] px-6 pb-10"
+        style={{ maxWidth: '80rem' }}
+      >
         <div style={divider} />
 
         {/* Eyebrow */}

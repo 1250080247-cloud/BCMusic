@@ -1,11 +1,15 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:math' as math;
+import 'dart:ui' show ImageFilter;
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'app_controller.dart';
 import 'app_theme.dart';
+import 'lyrics.dart';
 import 'models.dart';
 import 'track_widgets.dart';
 import 'track_actions.dart';
@@ -155,10 +159,116 @@ class _NowPlaying extends StatefulWidget {
 class _NowPlayingState extends State<_NowPlaying> {
   double? _drag, _volume;
   int _panel = 1;
+  LyricsRepository get _lyricsRepo => widget.controller.lyricsRepository;
+  LyricsData? _lyrics;
+  bool _loadingLyrics = false;
+  String? _loadedLyricsTrackId;
+  final ScrollController _lyricsScroll = ScrollController();
+  int _lastActiveLyric = -1;
+  bool _userScrollingLyrics = false;
+  Timer? _userScrollResumeTimer;
+
   @override
   void initState() {
     super.initState();
     unawaited(widget.controller.refreshFavorites());
+  }
+
+  @override
+  void dispose() {
+    _lyricsScroll.dispose();
+    _userScrollResumeTimer?.cancel();
+    super.dispose();
+  }
+
+  void _syncLyrics(String? trackId, String title, String artist, int durationMs) {
+    if (trackId == null || trackId.isEmpty) {
+      if (_loadedLyricsTrackId != null) {
+        setState(() {
+          _loadedLyricsTrackId = null;
+          _lyrics = null;
+          _loadingLyrics = false;
+        });
+      }
+      return;
+    }
+    if (_loadedLyricsTrackId == trackId) return;
+    _loadedLyricsTrackId = trackId;
+    _loadingLyrics = true;
+    _lyrics = null;
+    _lastActiveLyric = -1;
+    _lyricsRepo
+        .getLyrics(
+          trackId: trackId,
+          rawTitle: title,
+          rawArtist: artist,
+          durationMs: durationMs,
+        )
+        .then((data) {
+          if (mounted && _loadedLyricsTrackId == trackId) {
+            setState(() {
+              _lyrics = data;
+              _loadingLyrics = false;
+            });
+          }
+        })
+        .catchError((_) {
+          if (mounted && _loadedLyricsTrackId == trackId) {
+            setState(() {
+              _lyrics = LyricsData.empty;
+              _loadingLyrics = false;
+            });
+          }
+        });
+  }
+
+  Widget _buildPlayerBackground(String? path, String? url) {
+    Widget? image;
+    if (!kIsWeb && path != null && path.isNotEmpty) {
+      image = Image.file(
+        File(path),
+        fit: BoxFit.cover,
+        alignment: Alignment.center,
+        errorBuilder: (_, _, _) => const SizedBox.shrink(),
+      );
+    } else if (url != null && url.isNotEmpty) {
+      final uri = Uri.tryParse(url);
+      final hasArtworkUrl =
+          uri != null &&
+          uri.scheme == 'https' &&
+          uri.userInfo.isEmpty &&
+          (!uri.hasPort || uri.port == 443) &&
+          (uri.host == 'i.ytimg.com' || uri.host.endsWith('.sndcdn.com'));
+      if (hasArtworkUrl) {
+        image = Image.network(
+          uri.toString(),
+          fit: BoxFit.cover,
+          alignment: Alignment.center,
+          errorBuilder: (_, _, _) => const SizedBox.shrink(),
+        );
+      }
+    }
+
+    if (image == null) {
+      return const SizedBox.expand();
+    }
+
+    return SizedBox.expand(
+      child: ImageFiltered(
+        imageFilter: ImageFilter.blur(
+          sigmaX: 85,
+          sigmaY: 85,
+          tileMode: TileMode.mirror,
+        ),
+        child: Transform.scale(
+          scale: 1.25,
+          child: Opacity(
+            opacity: 0.65,
+            child: image,
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -189,6 +299,9 @@ class _NowPlayingState extends State<_NowPlaying> {
       final artworkUrl = player.offline
           ? track?.artworkUrl
           : track?.artworkUrl ?? sourceItem?.artworkUrl;
+      final currentTrackId = track?.id ??
+          (sourceItem != null ? 'source_${sourceItem.url.hashCode}' : null);
+      _syncLyrics(currentTrackId, title, artist, player.durationMs);
       return AnnotatedRegion<SystemUiOverlayStyle>(
         value: SystemUiOverlayStyle.light.copyWith(
           systemNavigationBarColor: Colors.transparent,
@@ -198,9 +311,38 @@ class _NowPlayingState extends State<_NowPlaying> {
         child: Theme(
           data: bcmusicTheme(),
           child: Scaffold(
-            backgroundColor: const Color(0xff151720),
+            backgroundColor: const Color(0xff0a0b10),
             body: Stack(
               children: [
+                Positioned.fill(
+                  child: ClipRect(
+                    child: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 600),
+                      child: KeyedSubtree(
+                        key: ValueKey(track?.artworkPath ?? artworkUrl ?? 'empty'),
+                        child: _buildPlayerBackground(
+                          track?.artworkPath,
+                          artworkUrl,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                const Positioned.fill(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [
+                          Color(0x6606080f),
+                          Color(0x2e070910),
+                          Color(0x8c06080f),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
                 const Positioned.fill(
                   child: DecoratedBox(
                     decoration: BoxDecoration(
@@ -208,12 +350,12 @@ class _NowPlayingState extends State<_NowPlaying> {
                         begin: Alignment.topCenter,
                         end: Alignment.bottomCenter,
                         colors: [
-                          Color(0x30000000),
-                          Colors.transparent,
-                          Color(0x98000000),
-                          Color(0xe6000000),
+                          Color(0xb30a0b10),
+                          Color(0x400a0b10),
+                          Color(0xb30a0b10),
+                          Color(0xf50a0b10),
                         ],
-                        stops: [0, .38, .57, 1],
+                        stops: [0.0, 0.32, 0.62, 1.0],
                       ),
                     ),
                   ),
@@ -250,6 +392,23 @@ class _NowPlayingState extends State<_NowPlaying> {
                                         fontWeight: FontWeight.w700,
                                       ),
                                     ),
+                                  ),
+                                ),
+                                IconButton(
+                                  tooltip: controller.sleepTimerActive
+                                      ? (controller.sleepAtEndOfTrack
+                                          ? 'Hẹn giờ tắt: khi hết bài'
+                                          : 'Hẹn giờ tắt: còn ${controller.sleepTimerRemaining?.inMinutes ?? 0} phút')
+                                      : 'Hẹn giờ tắt nhạc',
+                                  onPressed: () => _showSleepTimer(context, controller),
+                                  icon: Icon(
+                                    controller.sleepTimerActive
+                                        ? Icons.timer_rounded
+                                        : Icons.timer_outlined,
+                                    size: 24,
+                                    color: controller.sleepTimerActive
+                                        ? Theme.of(context).colorScheme.primary
+                                        : null,
                                   ),
                                 ),
                                 IconButton(
@@ -409,106 +568,81 @@ class _NowPlayingState extends State<_NowPlaying> {
                               ],
                             ),
                             const SizedBox(height: 12),
-                            Stack(
-                              alignment: Alignment.center,
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                Align(
-                                  alignment: Alignment.centerLeft,
-                                  child: PopupMenuButton<double>(
-                                    tooltip: 'Tốc độ phát',
-                                    initialValue: preferences.speed,
-                                    onSelected: (speed) => controller
-                                        .updatePreferences({'speed': speed}),
-                                    itemBuilder: (_) => [
-                                      for (final speed in AppPreferences.speeds)
-                                        PopupMenuItem(
-                                          value: speed,
-                                          child: Text(
-                                            playbackSpeedLabel(speed),
-                                          ),
-                                        ),
-                                    ],
-                                    child: SizedBox(
-                                      width: 48,
-                                      height: 48,
-                                      child: Padding(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 3,
-                                        ),
-                                        child: Center(
-                                          child: FittedBox(
-                                            fit: BoxFit.scaleDown,
-                                            child: Text(
-                                              playbackSpeedLabel(
-                                                preferences.speed,
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                    ),
+                                IconButton(
+                                  tooltip: controller.shuffle
+                                      ? 'Tắt trộn bài'
+                                      : 'Bật trộn bài',
+                                  isSelected: controller.shuffle,
+                                  onPressed: controller.toggleShuffle,
+                                  icon: Icon(
+                                    Icons.shuffle_rounded,
+                                    size: 22,
+                                    color: controller.shuffle
+                                        ? Theme.of(context).colorScheme.primary
+                                        : Theme.of(context)
+                                            .colorScheme
+                                            .onSurfaceVariant
+                                            .withValues(alpha: 0.6),
                                   ),
                                 ),
-                                Align(
-                                  alignment: Alignment.center,
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      IconButton(
-                                        tooltip: 'Bài trước',
-                                        onPressed: controller.canSkip(-1)
-                                            ? () => controller.skip(-1)
-                                            : null,
-                                        icon: const Icon(
-                                          Icons.skip_previous_rounded,
-                                          size: 22,
-                                        ),
-                                      ),
-                                      const SizedBox(width: 6),
-                                      IconButton(
-                                        onPressed: controller.togglePlay,
-                                        tooltip: player.isPlaying
-                                            ? 'Tạm dừng'
-                                            : 'Phát tiếp',
-                                        iconSize: 28,
-                                        icon: Icon(
-                                          player.isPlaying
-                                              ? Icons.pause_rounded
-                                              : Icons.play_arrow_rounded,
-                                          size: 28,
-                                        ),
-                                      ),
-                                      const SizedBox(width: 6),
-                                      IconButton(
-                                        tooltip: 'Bài tiếp',
-                                        onPressed: controller.canSkip(1)
-                                            ? () => controller.skip(1)
-                                            : null,
-                                        icon: const Icon(
-                                          Icons.skip_next_rounded,
-                                          size: 22,
-                                        ),
-                                      ),
-                                    ],
+                                IconButton(
+                                  tooltip: 'Bài trước',
+                                  onPressed: controller.canSkip(-1)
+                                      ? () => controller.skip(-1)
+                                      : null,
+                                  icon: const Icon(
+                                    Icons.skip_previous_rounded,
+                                    size: 24,
                                   ),
                                 ),
-                                Align(
-                                  alignment: Alignment.centerRight,
-                                  child: IconButton(
-                                    tooltip: controller.repeatOne
-                                        ? 'Tắt lặp lại'
-                                        : 'Lặp lại bài này',
-                                    isSelected: controller.repeatOne,
-                                    onPressed: controller.toggleRepeat,
-                                    icon: const Icon(
-                                      Icons.repeat_rounded,
-                                      size: 20,
-                                    ),
-                                    selectedIcon: const Icon(
-                                      Icons.repeat_one_rounded,
-                                      size: 20,
-                                    ),
+                                IconButton.filled(
+                                  onPressed: controller.togglePlay,
+                                  tooltip: player.isPlaying
+                                      ? 'Tạm dừng'
+                                      : 'Phát tiếp',
+                                  iconSize: 32,
+                                  style: IconButton.styleFrom(
+                                    minimumSize: const Size.square(54),
+                                  ),
+                                  icon: Icon(
+                                    player.isPlaying
+                                        ? Icons.pause_rounded
+                                        : Icons.play_arrow_rounded,
+                                    size: 32,
+                                  ),
+                                ),
+                                IconButton(
+                                  tooltip: 'Bài tiếp',
+                                  onPressed: controller.canSkip(1)
+                                      ? () => controller.skip(1)
+                                      : null,
+                                  icon: const Icon(
+                                    Icons.skip_next_rounded,
+                                    size: 24,
+                                  ),
+                                ),
+                                IconButton(
+                                  tooltip: switch (controller.repeatMode) {
+                                    'one' => 'Lặp lại: 1 bài',
+                                    'all' => 'Lặp lại: Tất cả',
+                                    _ => 'Lặp lại: Tắt',
+                                  },
+                                  isSelected: controller.repeatMode != 'off',
+                                  onPressed: controller.cycleRepeatMode,
+                                  icon: Icon(
+                                    controller.repeatMode == 'one'
+                                        ? Icons.repeat_one_rounded
+                                        : Icons.repeat_rounded,
+                                    size: 22,
+                                    color: controller.repeatMode != 'off'
+                                        ? Theme.of(context).colorScheme.primary
+                                        : Theme.of(context)
+                                            .colorScheme
+                                            .onSurfaceVariant
+                                            .withValues(alpha: 0.6),
                                   ),
                                 ),
                               ],
@@ -516,6 +650,45 @@ class _NowPlayingState extends State<_NowPlaying> {
                             const SizedBox(height: 16),
                             Row(
                               children: [
+                                PopupMenuButton<double>(
+                                  tooltip: 'Tốc độ phát',
+                                  initialValue: preferences.speed,
+                                  onSelected: (speed) => controller
+                                      .updatePreferences({'speed': speed}),
+                                  itemBuilder: (_) => [
+                                    for (final speed in AppPreferences.speeds)
+                                      PopupMenuItem(
+                                        value: speed,
+                                        child: Text(
+                                          playbackSpeedLabel(speed),
+                                        ),
+                                      ),
+                                  ],
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 4,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      borderRadius: BorderRadius.circular(6),
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .surfaceContainerHighest
+                                          .withValues(alpha: 0.35),
+                                    ),
+                                    child: Text(
+                                      playbackSpeedLabel(preferences.speed),
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .onSurface,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
                                 const Icon(Icons.volume_down_rounded, size: 22),
                                 Expanded(
                                   child: Slider(
@@ -588,38 +761,19 @@ class _NowPlayingState extends State<_NowPlaying> {
                             ),
                             const SizedBox(height: 12),
                             if (_panel == 0)
-                              const Text('Chưa có lời bài hát cho bài này.')
-                            else if (_panel == 1) ...[
-                              for (final item in queue.skip(
-                                (queueIndex ?? -1) + 1,
-                              ))
-                                ListTile(
-                                  contentPadding: EdgeInsets.zero,
-                                  leading: TrackArtwork(
-                                    url: item.artworkUrl,
-                                    size: 42,
-                                  ),
-                                  title: Text(
-                                    item.title,
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                  subtitle: Text(item.artist),
-                                  onTap: () => controller.playSource(
-                                    item.url,
-                                    queue: queue.map((entry) => entry.url),
-                                    queueItems: queue,
-                                  ),
-                                ),
-                              if (queue.isEmpty)
-                                TextButton(
-                                  onPressed: () => _showQueue(context),
-                                  child: const Text('Mở danh sách bài'),
-                                ),
-                              if (queue.isNotEmpty &&
-                                  queueIndex == queue.length - 1)
-                                const Text('Đã đến cuối hàng đợi.'),
-                            ] else ...[
+                              _buildLyricsPanel(
+                                context,
+                                constraints,
+                                controller,
+                                player,
+                              )
+                            else if (_panel == 1)
+                              _buildNextQueuePanel(
+                                context,
+                                controller,
+                                player,
+                              )
+                            else ...[
                               ListTile(
                                 contentPadding: EdgeInsets.zero,
                                 title: const Text('Nguồn'),
@@ -667,6 +821,448 @@ class _NowPlayingState extends State<_NowPlaying> {
     },
   );
 
+  Widget _buildNextQueuePanel(
+    BuildContext context,
+    MusicController controller,
+    PlaybackState player,
+  ) {
+    final allItems = controller.currentQueueItems;
+    final currentIdx = controller.currentQueueIndex ?? -1;
+    final upcomingItems = (currentIdx >= 0 && currentIdx < allItems.length)
+        ? allItems.skip(currentIdx + 1).toList()
+        : allItems;
+
+    if (upcomingItems.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.queue_music_rounded,
+              size: 48,
+              color: Theme.of(context)
+                  .colorScheme
+                  .onSurfaceVariant
+                  .withValues(alpha: 0.5),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              allItems.isNotEmpty
+                  ? 'Đã đến cuối hàng đợi.'
+                  : 'Chưa có bài hát trong hàng đợi.',
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+                color: Theme.of(context).colorScheme.onSurface,
+              ),
+            ),
+            if (controller.repeatMode == 'all' && allItems.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Text(
+                'Hàng đợi sẽ tự động lặp lại từ đầu.',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+            const SizedBox(height: 16),
+            OutlinedButton.icon(
+              onPressed: () => _showQueue(context),
+              icon: const Icon(Icons.playlist_play_rounded, size: 18),
+              label: const Text('Mở danh sách bài'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Row(
+            children: [
+              Text(
+                'Tiếp theo (${upcomingItems.length} bài)',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const Spacer(),
+              TextButton.icon(
+                onPressed: () => _showQueue(context),
+                icon: const Icon(Icons.playlist_play_rounded, size: 16),
+                label: const Text('Xem tất cả', style: TextStyle(fontSize: 12)),
+              ),
+            ],
+          ),
+        ),
+        ReorderableListView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          buildDefaultDragHandles: false,
+          itemCount: upcomingItems.length,
+          // ignore: deprecated_member_use
+          onReorder: (oldIdx, newIdx) {
+            controller.reorderUpcomingQueue(oldIdx, newIdx);
+          },
+          itemBuilder: (context, index) {
+            final item = upcomingItems[index];
+            final actualQueueIndex =
+                (currentIdx >= 0 ? currentIdx + 1 : 0) + index;
+            return ListTile(
+              key: ValueKey('queue_${item.url}_$index'),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 2,
+                vertical: 2,
+              ),
+              leading: TrackArtwork(
+                url: item.artworkUrl,
+                size: 42,
+              ),
+              title: Text(
+                item.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+              subtitle: Text(
+                item.artist.isEmpty ? 'BCMusic' : item.artist,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    tooltip: 'Xóa khỏi hàng đợi',
+                    icon: const Icon(Icons.close_rounded, size: 18),
+                    onPressed: () =>
+                        controller.removeQueueItem(actualQueueIndex),
+                  ),
+                  ReorderableDragStartListener(
+                    index: index,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 6),
+                      child: Icon(
+                        Icons.drag_handle_rounded,
+                        size: 20,
+                        color: Theme.of(context)
+                            .colorScheme
+                            .onSurfaceVariant
+                            .withValues(alpha: 0.6),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              onTap: () => controller.skipToQueueIndex(actualQueueIndex),
+            );
+          },
+        ),
+      ],
+    );
+  }
+
+  Widget _buildLyricsPanel(
+    BuildContext context,
+    BoxConstraints constraints,
+    MusicController controller,
+    PlaybackState player,
+  ) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final panelHeight = math.max(
+      200.0,
+      math.min(360.0, constraints.maxHeight * 0.45),
+    );
+
+    if (_loadingLyrics) {
+      return SizedBox(
+        height: 180,
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.5,
+                  color: colorScheme.primary,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Đang tìm lời bài hát...',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    final lyrics = _lyrics;
+    if (lyrics == null || (!lyrics.hasLyrics && !lyrics.isInstrumental)) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 24),
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Chưa có lời bài hát cho bài này.',
+                style: TextStyle(
+                  color: colorScheme.onSurfaceVariant,
+                  fontSize: 14,
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextButton.icon(
+                onPressed: () {
+                  _loadedLyricsTrackId = null;
+                  setState(() {});
+                },
+                icon: const Icon(Icons.refresh_rounded, size: 16),
+                label: const Text('Thử tìm lại'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    if (lyrics.isInstrumental) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 36),
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.music_note_rounded,
+                size: 42,
+                color: colorScheme.primary,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Bản nhạc không lời (Instrumental)',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    if (lyrics.isSynced) {
+      final activeIdx = activeLyricIndex(lyrics.lines, player.positionMs);
+      if (activeIdx != _lastActiveLyric) {
+        _lastActiveLyric = activeIdx;
+        if (activeIdx >= 0 && !_userScrollingLyrics && _lyricsScroll.hasClients) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (_lyricsScroll.hasClients && !_userScrollingLyrics) {
+              final targetOffset = math.max(0.0, (activeIdx * 52.0) - 100.0);
+              _lyricsScroll.animateTo(
+                targetOffset,
+                duration: const Duration(milliseconds: 300),
+                curve: Curves.easeOutCubic,
+              );
+            }
+          });
+        }
+      }
+
+      return NotificationListener<ScrollNotification>(
+        onNotification: (notification) {
+          if (notification is ScrollStartNotification &&
+              notification.dragDetails != null) {
+            _userScrollingLyrics = true;
+            _userScrollResumeTimer?.cancel();
+          } else if (notification is ScrollEndNotification) {
+            _userScrollResumeTimer?.cancel();
+            _userScrollResumeTimer = Timer(const Duration(seconds: 4), () {
+              if (mounted) setState(() => _userScrollingLyrics = false);
+            });
+          }
+          return false;
+        },
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: panelHeight),
+          child: ListView.builder(
+            controller: _lyricsScroll,
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            itemCount: lyrics.lines.length,
+            itemBuilder: (context, index) {
+              final line = lyrics.lines[index];
+              final isCurrent = index == activeIdx;
+              return InkWell(
+                borderRadius: BorderRadius.circular(8),
+                onTap: () => controller.seek(line.timeMs),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 8,
+                    horizontal: 12,
+                  ),
+                  child: Text(
+                    line.text.isEmpty ? '♪' : line.text,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: isCurrent ? 18 : 15,
+                      fontWeight:
+                          isCurrent ? FontWeight.w800 : FontWeight.w500,
+                      color: isCurrent
+                          ? colorScheme.primary
+                          : colorScheme.onSurface.withValues(alpha: 0.45),
+                      height: 1.3,
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      );
+    }
+
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxHeight: panelHeight),
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+        child: SelectableText(
+          lyrics.plainLyrics,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 15,
+            height: 1.5,
+            color: colorScheme.onSurface.withValues(alpha: 0.85),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showSleepTimer(BuildContext context, MusicController controller) {
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      useSafeArea: true,
+      builder: (sheetContext) => ListenableBuilder(
+        listenable: controller,
+        builder: (context, _) {
+          final theme = Theme.of(context);
+          final colorScheme = theme.colorScheme;
+          final active = controller.sleepTimerActive;
+          final remaining = controller.sleepTimerRemaining;
+          final atEnd = controller.sleepAtEndOfTrack;
+          String statusText = 'Hẹn giờ tắt nhạc tự động';
+          if (active) {
+            if (atEnd) {
+              statusText = 'Nhạc sẽ dừng sau khi hết bài đang phát';
+            } else if (remaining != null) {
+              final min = remaining.inMinutes;
+              final sec = remaining.inSeconds % 60;
+              statusText =
+                  'Nhạc sẽ dừng sau: ${min > 0 ? '$min phút ' : ''}$sec giây';
+            }
+          }
+          return SafeArea(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    children: [
+                      Icon(
+                        active ? Icons.timer_rounded : Icons.timer_outlined,
+                        color: active
+                            ? colorScheme.primary
+                            : colorScheme.onSurfaceVariant,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Hẹn giờ tắt nhạc',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            Text(
+                              statusText,
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: active
+                                    ? colorScheme.primary
+                                    : colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      if (active)
+                        TextButton(
+                          onPressed: () {
+                            controller.cancelSleepTimer();
+                          },
+                          child: const Text('Tắt hẹn giờ'),
+                        ),
+                    ],
+                  ),
+                  const Divider(height: 24),
+                  for (final minutes in [15, 30, 45, 60])
+                    ListTile(
+                      leading: const Icon(Icons.schedule_rounded),
+                      title: Text('$minutes phút'),
+                      selected: !atEnd &&
+                          controller.sleepTimerMinutes == minutes &&
+                          active,
+                      onTap: () {
+                        controller.setSleepTimer(minutes);
+                        Navigator.pop(sheetContext);
+                      },
+                    ),
+                  ListTile(
+                    leading: const Icon(Icons.skip_next_rounded),
+                    title: const Text('Khi hết bài hiện tại'),
+                    selected: atEnd && active,
+                    onTap: () {
+                      controller.setSleepTimer(null, atEndOfTrack: true);
+                      Navigator.pop(sheetContext);
+                    },
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
   Future<void> _showActions(
     BuildContext context,
     OfflineTrack? track,
@@ -713,6 +1309,16 @@ class _NowPlayingState extends State<_NowPlaying> {
                   ? null
                   : () => Navigator.pop(sheetContext, _PlayerAction.share),
             ),
+            ListTile(
+              leading: const Icon(Icons.timer_outlined),
+              title: const Text('Hẹn giờ tắt nhạc'),
+              subtitle: widget.controller.sleepTimerActive
+                  ? Text(widget.controller.sleepAtEndOfTrack
+                      ? 'Đang hẹn: khi hết bài'
+                      : 'Đang hẹn: còn ${widget.controller.sleepTimerRemaining?.inMinutes ?? 0} phút')
+                  : null,
+              onTap: () => Navigator.pop(sheetContext, _PlayerAction.timer),
+            ),
             const SizedBox(height: 8),
           ],
         ),
@@ -753,6 +1359,8 @@ class _NowPlayingState extends State<_NowPlaying> {
         widget.onDownload(url);
       case _PlayerAction.share:
         if (url != null) await shareSong(context, widget.controller, url);
+      case _PlayerAction.timer:
+        _showSleepTimer(context, widget.controller);
     }
   }
 
@@ -898,4 +1506,4 @@ class _NowPlayingState extends State<_NowPlaying> {
   }
 }
 
-enum _PlayerAction { playlist, download, share }
+enum _PlayerAction { playlist, download, share, timer }

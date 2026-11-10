@@ -87,6 +87,65 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           ),
                       ],
                     ),
+                    const SizedBox(height: 12),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      secondary: const Icon(Icons.waves_rounded),
+                      title: const Text('Chuyển bài mượt mà (5 giây)'),
+                      subtitle: const Text('Làm mờ dần bài cũ và tăng rõ bài kế tiếp'),
+                      value: settings.crossfade,
+                      onChanged: (value) => widget.controller
+                          .updatePreferences({'crossfade': value}),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Tải nhạc ngoại tuyến',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Chất lượng tải nhạc',
+                      style: TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Chỉ áp dụng cho các lượt tải mới; không ảnh hưởng các bài đã tải trước đó.',
+                      style: TextStyle(color: context.palette.muted, fontSize: 13),
+                    ),
+                    const SizedBox(height: 12),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 4,
+                      children: [
+                        ChoiceChip(
+                          label: const Text('Tiết kiệm (~50-70k)'),
+                          selected: settings.downloadQuality == 'economy',
+                          onSelected: (_) => widget.controller
+                              .updatePreferences({'downloadQuality': 'economy'}),
+                        ),
+                        ChoiceChip(
+                          label: const Text('Tiêu chuẩn (~128k)'),
+                          selected: settings.downloadQuality == 'standard',
+                          onSelected: (_) => widget.controller
+                              .updatePreferences({'downloadQuality': 'standard'}),
+                        ),
+                        ChoiceChip(
+                          label: const Text('Chất lượng cao (~160k)'),
+                          selected: settings.downloadQuality == 'high',
+                          onSelected: (_) => widget.controller
+                              .updatePreferences({'downloadQuality': 'high'}),
+                        ),
+                      ],
+                    ),
                   ],
                 ),
               ),

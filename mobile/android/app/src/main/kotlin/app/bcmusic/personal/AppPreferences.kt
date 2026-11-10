@@ -8,19 +8,40 @@ data class AppPreferences(
     val volume: Int = 100,
     val speed: Float = 1f,
     val motion: Boolean = true,
+    val repeatMode: String = "off",
+    val shuffle: Boolean = false,
+    val downloadQuality: String = "standard",
+    val crossfade: Boolean = false,
 ) {
-    fun toMap(): Map<String, Any> = mapOf("light" to light, "volume" to volume, "speed" to speed.toDouble(), "motion" to motion)
+    fun toMap(): Map<String, Any> = mapOf(
+        "light" to light,
+        "volume" to volume,
+        "speed" to speed.toDouble(),
+        "motion" to motion,
+        "repeatMode" to repeatMode,
+        "shuffle" to shuffle,
+        "downloadQuality" to downloadQuality,
+        "crossfade" to crossfade,
+    )
 
     companion object {
         val speeds = setOf(.75f, 1f, 1.25f, 1.5f, 2f)
+        val repeatModes = setOf("off", "all", "one")
+        val downloadQualities = setOf("economy", "standard", "high")
 
         fun fromMap(values: Map<*, *>, defaults: AppPreferences = AppPreferences()): AppPreferences {
             val rate = (values["speed"] as? Number)?.toDouble()
+            val repeat = values["repeatMode"] as? String
+            val quality = values["downloadQuality"] as? String
             return AppPreferences(
                 values["light"] as? Boolean ?: defaults.light,
                 (values["volume"] as? Number)?.toInt()?.coerceIn(0, 100) ?: defaults.volume,
                 speeds.find { it.toDouble() == rate } ?: defaults.speed,
                 values["motion"] as? Boolean ?: defaults.motion,
+                if (repeat in repeatModes) repeat!! else defaults.repeatMode,
+                values["shuffle"] as? Boolean ?: defaults.shuffle,
+                if (quality in downloadQualities) quality!! else defaults.downloadQuality,
+                values["crossfade"] as? Boolean ?: defaults.crossfade,
             )
         }
     }
