@@ -110,6 +110,16 @@ class QueueTestMusicPlatform implements MusicPlatform {
   Future<void> reorderQueue(int oldIndex, int newIndex) async {
     reorderedQueueMoves.add((oldIndex, newIndex));
   }
+
+  @override
+  Future<PlaylistPreview> resolvePlaylist(String url) async => throw UnimplementedError();
+
+  @override
+  Future<LocalPlaylist> importSoundCloudPlaylist({
+    required String name,
+    required String sourceUrl,
+    required List<OfflineTrack> tracks,
+  }) async => throw UnimplementedError();
 }
 
 void main() {

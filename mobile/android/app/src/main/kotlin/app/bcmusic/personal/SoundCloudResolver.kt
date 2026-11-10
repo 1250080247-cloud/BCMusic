@@ -23,6 +23,24 @@ data class SoundCloudFormat(val bitrate: Int, val mimeType: String) {
     }
 }
 
+data class ResolvedPlaylistTrack(
+    val id: String,
+    val title: String,
+    val artist: String,
+    val sourceUrl: String,
+    val durationMs: Long,
+    val artworkUrl: String?
+)
+
+data class ResolvedPlaylist(
+    val id: String,
+    val name: String,
+    val uploader: String,
+    val artworkUrl: String?,
+    val sourceUrl: String,
+    val tracks: List<ResolvedPlaylistTrack>
+)
+
 class SoundCloudResolver {
     // Reuse upstream's anonymous bootstrap and track resolution. Its current
     // stream builder only recognizes AAC 160k; SoundCloud now returns AAC 96k.
@@ -30,7 +48,18 @@ class SoundCloudResolver {
         val downloader = SourceDownloader()
         val canonicalInput = if (source.url.toHttpUrl().host == "on.soundcloud.com")
             SourceUrl.parse(downloader.head(source.url).latestUrl()) else source
-        val track = SoundcloudParsingHelper.resolveFor(downloader, canonicalInput.url)
+        val track = if (canonicalInput.url.startsWith("https://api-v2.soundcloud.com/tracks/")) {
+            val clientId = SoundcloudParsingHelper.clientId()
+            val req = canonicalInput.url.toHttpUrl().newBuilder().setQueryParameter("client_id", clientId).build()
+            val res = downloader.get(req.toString())
+            if (res.responseCode() !in 200..299) throw SourceFailure("UNAVAILABLE", "Không đọc được bài SoundCloud.")
+            JsonParser.`object`().from(res.responseBody())
+        } else {
+            SoundcloudParsingHelper.resolveFor(downloader, canonicalInput.url)
+        }
+        if (track.getString("kind") == "playlist") {
+            throw SourceFailure("PLAYLIST_URL", "Đây là link danh sách phát SoundCloud.")
+        }
         if (!track.getBoolean("streamable") || track.getString("policy") != "ALLOW") {
             throw SourceFailure("UNAVAILABLE", "Bài SoundCloud này bị giới hạn hoặc chưa cho phép nghe đầy đủ.")
         }
@@ -95,5 +124,50 @@ class SoundCloudResolver {
             }
         }
         throw SourceFailure("UNAVAILABLE", "SoundCloud chưa cung cấp nguồn nghe đầy đủ cho bài này. Hãy thử lại sau.")
+    }
+
+    fun resolvePlaylist(source: SourceUrl): ResolvedPlaylist {
+        val downloader = SourceDownloader()
+        val canonicalInput = if (source.url.toHttpUrl().host == "on.soundcloud.com")
+            SourceUrl.parse(downloader.head(source.url).latestUrl()) else source
+        val responseObj = SoundcloudParsingHelper.resolveFor(downloader, canonicalInput.url)
+        val kind = responseObj.getString("kind")
+        if (kind != "playlist") {
+            throw SourceFailure("UNSUPPORTED", "Link này không phải playlist SoundCloud.")
+        }
+        val playlistId = responseObj.getLong("id")
+        val playlistTitle = responseObj.getString("title", "SoundCloud Playlist").take(80)
+        val uploader = responseObj.getObject("user")?.getString("username", "") ?: ""
+        val artwork = responseObj.getString("artwork_url") ?: responseObj.getObject("user")?.getString("avatar_url")
+        val tracksArray = responseObj.getArray("tracks") ?: com.grack.nanojson.JsonArray()
+
+        val parsedTracks = mutableListOf<ResolvedPlaylistTrack>()
+        for (i in 0 until tracksArray.size) {
+            val item = tracksArray.getObject(i) ?: continue
+            val id = item.getLong("id")
+            if (id <= 0) continue
+            val title = item.getString("title", "Chưa có tên").take(500)
+            val permalink = item.getString("permalink_url")
+            val artist = item.getObject("user")?.getString("username", uploader) ?: uploader
+            val duration = item.getLong("duration", 0L)
+            val trackArtwork = item.getString("artwork_url") ?: artwork
+            val trackUrl = if (!permalink.isNullOrBlank()) permalink else "https://api-v2.soundcloud.com/tracks/$id"
+            parsedTracks.add(ResolvedPlaylistTrack(
+                id = "soundcloud_$id",
+                title = title,
+                artist = artist,
+                sourceUrl = trackUrl,
+                durationMs = duration,
+                artworkUrl = trackArtwork
+            ))
+        }
+        return ResolvedPlaylist(
+            id = "soundcloud_playlist_$playlistId",
+            name = playlistTitle.ifBlank { "SoundCloud Playlist" },
+            uploader = uploader,
+            artworkUrl = artwork,
+            sourceUrl = canonicalInput.url,
+            tracks = parsedTracks
+        )
     }
 }

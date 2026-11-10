@@ -94,6 +94,14 @@ class _LyricsMockPlatform implements MusicPlatform {
   }
   @override
   Future<String?> getLyrics(String trackId) async => cachedLyrics[trackId];
+  @override
+  Future<PlaylistPreview> resolvePlaylist(String url) async => throw UnimplementedError();
+  @override
+  Future<LocalPlaylist> importSoundCloudPlaylist({
+    required String name,
+    required String sourceUrl,
+    required List<OfflineTrack> tracks,
+  }) async => throw UnimplementedError();
 }
 
 void main() {

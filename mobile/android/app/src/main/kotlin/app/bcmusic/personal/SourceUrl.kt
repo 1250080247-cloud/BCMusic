@@ -7,6 +7,8 @@ class SourceFailure(val code: String, override val message: String, cause: Throw
     Exception(message, cause)
 
 data class SourceUrl(val url: String, val provider: String) {
+    val isPlaylist: Boolean get() = provider == "soundcloud" && url.contains("/sets/")
+
     companion object {
         fun parse(input: String): SourceUrl {
             fun invalid(): Nothing = throw SourceFailure("INVALID_URL", "Hãy dùng link một bài YouTube hoặc SoundCloud.")
@@ -31,10 +33,14 @@ data class SourceUrl(val url: String, val provider: String) {
                 val shortLink = host == "on.soundcloud.com" && parts.size == 1
                 val track = host != "on.soundcloud.com" && parts.size == 2 && parts[1] !in
                     listOf("sets", "likes", "tracks", "albums", "reposts")
-                if ((shortLink || track) && parts.none { it == "." || it == ".." }) {
+                val playlist = host != "on.soundcloud.com" && parts.size >= 3 && parts[1] == "sets"
+                if ((shortLink || track || playlist) && parts.none { it == "." || it == ".." }) {
                     val canonicalHost = if (shortLink) host else "soundcloud.com"
                     return SourceUrl(URI("https", canonicalHost, "/${parts.joinToString("/")}", null).toASCIIString(), "soundcloud")
                 }
+            }
+            if (host == "api-v2.soundcloud.com" && parts.size == 2 && parts[0] == "tracks" && Regex("^\\d+$").matches(parts[1])) {
+                return SourceUrl("https://api-v2.soundcloud.com/tracks/${parts[1]}", "soundcloud")
             }
             invalid()
         }

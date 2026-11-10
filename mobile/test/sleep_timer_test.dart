@@ -101,6 +101,14 @@ class _FakePlatform implements MusicPlatform {
   Future<void> removeQueueItem(int index) async {}
   @override
   Future<void> reorderQueue(int oldIndex, int newIndex) async {}
+  @override
+  Future<PlaylistPreview> resolvePlaylist(String url) async => throw UnimplementedError();
+  @override
+  Future<LocalPlaylist> importSoundCloudPlaylist({
+    required String name,
+    required String sourceUrl,
+    required List<OfflineTrack> tracks,
+  }) async => throw UnimplementedError();
 }
 
 void main() {

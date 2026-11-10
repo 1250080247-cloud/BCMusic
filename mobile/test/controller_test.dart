@@ -17,6 +17,8 @@ const sample = OfflineTrack(
 class FakeMusicPlatform implements MusicPlatform {
   final updates = StreamController<LibrarySnapshot>.broadcast(sync: true);
   final pending = <String, Completer<OfflineTrack>>{};
+  final playlistPending = <String, Completer<PlaylistPreview>>{};
+  final importedPlaylists = <({String name, String sourceUrl, List<OfflineTrack> tracks})>[];
   final enqueued = <String>[];
   final playedSources = <String>[];
   final skips = <int>[];
@@ -28,6 +30,18 @@ class FakeMusicPlatform implements MusicPlatform {
   @override
   Future<OfflineTrack> resolve(String url) =>
       (pending[url] = Completer()).future;
+  @override
+  Future<PlaylistPreview> resolvePlaylist(String url) =>
+      (playlistPending[url] = Completer()).future;
+  @override
+  Future<LocalPlaylist> importSoundCloudPlaylist({
+    required String name,
+    required String sourceUrl,
+    required List<OfflineTrack> tracks,
+  }) async {
+    importedPlaylists.add((name: name, sourceUrl: sourceUrl, tracks: tracks));
+    return LocalPlaylist(id: 'local_1', name: name, trackIds: tracks.map((t) => t.id).toList());
+  }
   @override
   Future<void> enqueue(String id) async {
     enqueued.add(id);
@@ -251,6 +265,62 @@ void main() {
       await controller.initialize();
       expect(controller.tracks.single.isReady, isTrue);
       expect(platform.pending, isEmpty);
+      controller.dispose();
+      await platform.updates.close();
+    },
+  );
+
+  test(
+    'inspecting soundcloud playlist resolves playlistPreview and downloads it to offline playlist',
+    () async {
+      final platform = FakeMusicPlatform();
+      final controller = MusicController(platform);
+      await controller.initialize();
+
+      const playlistUrl = 'https://soundcloud.com/artist/sets/chill-vibes';
+      final inspection = controller.inspect(playlistUrl);
+      expect(controller.resolving, isTrue);
+
+      final mockPlaylist = PlaylistPreview(
+        id: 'soundcloud_playlist_123',
+        name: 'Chill Vibes',
+        uploader: 'SoundCloud Artist',
+        sourceUrl: playlistUrl,
+        provider: 'soundcloud',
+        tracks: const [
+          OfflineTrack(
+            id: 'soundcloud_111',
+            title: 'Track 1',
+            artist: 'Artist',
+            sourceUrl: 'https://soundcloud.com/artist/track-1',
+            provider: 'soundcloud',
+            status: 'preview',
+          ),
+          OfflineTrack(
+            id: 'soundcloud_222',
+            title: 'Track 2',
+            artist: 'Artist',
+            sourceUrl: 'https://soundcloud.com/artist/track-2',
+            provider: 'soundcloud',
+            status: 'preview',
+          ),
+        ],
+      );
+
+      platform.playlistPending[playlistUrl]!.complete(mockPlaylist);
+      await inspection;
+
+      expect(controller.resolving, isFalse);
+      expect(controller.playlistPreview?.name, 'Chill Vibes');
+      expect(controller.playlistPreview?.tracks.length, 2);
+
+      // Download playlist preview
+      await controller.downloadPlaylistPreview();
+      expect(platform.importedPlaylists.length, 1);
+      expect(platform.importedPlaylists.first.name, 'Chill Vibes');
+      expect(platform.importedPlaylists.first.tracks.length, 2);
+      expect(controller.playlistPreview, isNull);
+
       controller.dispose();
       await platform.updates.close();
     },

@@ -180,6 +180,28 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   const SizedBox(height: 20),
                 ],
+                if (controller.playlistPreview case final playlist?
+                    when !widget.soundCloud ||
+                        playlist.provider == 'soundcloud') ...[
+                  PlaylistPreviewCard(
+                    playlist: playlist,
+                    busy: controller.downloading,
+                    onDownload: () async {
+                      await controller.downloadPlaylistPreview();
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              'Đã thêm “${playlist.name}” vào Playlist offline và bắt đầu tải ${playlist.tracks.length} bài.',
+                            ),
+                          ),
+                        );
+                      }
+                    },
+                    onClose: controller.dismissPreview,
+                  ),
+                  const SizedBox(height: 20),
+                ],
                 SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
                   child: Row(
@@ -361,7 +383,9 @@ class _LinkInputSheetState extends State<LinkInputSheet> {
           ),
           const SizedBox(height: 10),
           Text(
-            widget.soundCloud ? 'Dán link một bài SoundCloud.' : 'Dán link một bài hoặc chia sẻ từ YouTube / SoundCloud sang BCMusic.',
+            widget.soundCloud
+                ? 'Dán link một bài hoặc playlist SoundCloud.'
+                : 'Dán link một bài hoặc chia sẻ từ YouTube / SoundCloud sang BCMusic.',
             style: TextStyle(color: context.palette.muted, height: 1.5),
           ),
           const SizedBox(height: 22),
@@ -372,7 +396,7 @@ class _LinkInputSheetState extends State<LinkInputSheet> {
             maxLength: 8192,
             keyboardType: TextInputType.url,
             decoration: InputDecoration(
-              labelText: 'Link bài hát',
+              labelText: widget.soundCloud ? 'Link bài hát hoặc playlist' : 'Link bài hát',
               counterText: '',
               suffixIcon: IconButton(
                 tooltip: 'Dán liên kết',

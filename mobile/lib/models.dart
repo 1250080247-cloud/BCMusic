@@ -5,6 +5,8 @@ class SourceLink {
   final String url;
   final String provider;
 
+  bool get isPlaylist => provider == 'soundcloud' && url.contains('/sets/');
+
   factory SourceLink.parse(String input) {
     if (input.length > 8192) {
       throw const FormatException('Link quá dài.');
@@ -59,7 +61,12 @@ class SourceLink {
           host != 'on.soundcloud.com' &&
           parts.length == 2 &&
           !['sets', 'likes', 'tracks', 'albums', 'reposts'].contains(parts[1]);
-      if (isShort || isTrack) {
+      final isPlaylist =
+          host != 'on.soundcloud.com' &&
+          parts.length >= 3 &&
+          parts[1] == 'sets' &&
+          !parts.any((p) => p == '.' || p == '..');
+      if (isShort || isTrack || isPlaylist) {
         return SourceLink(
           Uri.https(
             isShort ? host : 'soundcloud.com',
@@ -70,7 +77,7 @@ class SourceLink {
       }
     }
     throw const FormatException(
-      'Chỉ hỗ trợ link một bài YouTube hoặc SoundCloud.',
+      'Chỉ hỗ trợ link một bài YouTube hoặc bài/playlist SoundCloud.',
     );
   }
 }
@@ -131,6 +138,41 @@ class OfflineTrack {
     'artworkUrl': artworkUrl,
     'error': error,
   };
+}
+
+class PlaylistPreview {
+  const PlaylistPreview({
+    required this.id,
+    required this.name,
+    required this.uploader,
+    required this.sourceUrl,
+    required this.provider,
+    required this.tracks,
+    this.artworkUrl,
+  });
+
+  final String id;
+  final String name;
+  final String uploader;
+  final String sourceUrl;
+  final String provider;
+  final List<OfflineTrack> tracks;
+  final String? artworkUrl;
+
+  factory PlaylistPreview.fromMap(Map<Object?, Object?> map) {
+    final rawTracks = (map['tracks'] as List<Object?>? ?? const [])
+        .map((t) => OfflineTrack.fromMap(Map<Object?, Object?>.from(t as Map)))
+        .toList();
+    return PlaylistPreview(
+      id: (map['id'] as String?) ?? '',
+      name: (map['name'] as String?) ?? 'SoundCloud Playlist',
+      uploader: (map['uploader'] as String?) ?? '',
+      sourceUrl: (map['sourceUrl'] as String?) ?? '',
+      provider: (map['provider'] as String?) ?? 'soundcloud',
+      artworkUrl: map['artworkUrl'] as String?,
+      tracks: rawTracks,
+    );
+  }
 }
 
 class PlaybackState {

@@ -89,4 +89,47 @@ class SoundCloudPendingPlaylistTest {
         assertTrue(updatedPlaylist.trackIds.contains(canonicalId))
         assertFalse(pendingStore.has(legacyHashId, playlist.id))
     }
+
+    @Test
+    fun importSoundCloudPlaylistAddsTracksAndReconcilesPending() {
+        val pendingStore = PendingPlaylistStore(context)
+        val playlistStore = PlaylistStore(context).apply { load() }
+
+        val playlist = playlistStore.create("SoundCloud Set", null)
+        val tracks = listOf(
+            "soundcloud_11111",
+            "soundcloud_22222",
+            "soundcloud_33333"
+        )
+
+        // Suppose track 1 is already downloaded
+        playlistStore.add(playlist.id, tracks[0])
+
+        // Tracks 2 and 3 are pending download
+        pendingStore.add(tracks[1], playlist.id)
+        pendingStore.add(tracks[2], playlist.id)
+
+        assertTrue(playlistStore.items.first { it.id == playlist.id }.trackIds.contains(tracks[0]))
+        assertTrue(pendingStore.has(tracks[1], playlist.id))
+        assertTrue(pendingStore.has(tracks[2], playlist.id))
+
+        // When track 2 finishes downloading
+        val targets2 = pendingStore.getPlaylistsForTrack(tracks[1])
+        targets2.forEach { pId ->
+            playlistStore.add(pId, tracks[1])
+            pendingStore.remove(tracks[1], pId)
+        }
+
+        // When track 3 finishes downloading
+        val targets3 = pendingStore.getPlaylistsForTrack(tracks[2])
+        targets3.forEach { pId ->
+            playlistStore.add(pId, tracks[2])
+            pendingStore.remove(tracks[2], pId)
+        }
+
+        val finalPlaylist = playlistStore.items.first { it.id == playlist.id }
+        assertEquals(tracks, finalPlaylist.trackIds)
+        assertFalse(pendingStore.has(tracks[1], playlist.id))
+        assertFalse(pendingStore.has(tracks[2], playlist.id))
+    }
 }

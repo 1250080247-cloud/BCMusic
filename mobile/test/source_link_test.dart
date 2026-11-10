@@ -18,6 +18,9 @@ void main() {
       SourceLink.parse('https://on.soundcloud.com/abc123').provider,
       'soundcloud',
     );
+    final playlist = SourceLink.parse('https://soundcloud.com/artist/sets/album');
+    expect(playlist.provider, 'soundcloud');
+    expect(playlist.isPlaylist, isTrue);
   });
 
   test('rejects unsupported, ambiguous and deceptive URLs', () {
@@ -27,7 +30,6 @@ void main() {
       'https://youtube.com.evil.test/watch?v=M7lc1UVf-VE',
       'https://evil.test/?url=https://youtube.com/watch?v=M7lc1UVf-VE',
       'https://youtube.com/playlist?list=123',
-      'https://soundcloud.com/artist/sets/album',
       'https://user@youtube.com/watch?v=M7lc1UVf-VE',
       'https://youtu.be/M7lc1UVf-VE https://soundcloud.com/artist/track',
     ]) {

@@ -6,6 +6,12 @@ abstract class MusicPlatform {
   Stream<LibrarySnapshot> get events;
   Future<LibrarySnapshot> getState();
   Future<OfflineTrack> resolve(String url);
+  Future<PlaylistPreview> resolvePlaylist(String url);
+  Future<LocalPlaylist> importSoundCloudPlaylist({
+    required String name,
+    required String sourceUrl,
+    required List<OfflineTrack> tracks,
+  });
   Future<void> enqueue(String id);
   Future<void> retry(String id);
   Future<void> remove(String id);
@@ -138,6 +144,30 @@ class AndroidMusicPlatform implements MusicPlatform {
     (await _methods.invokeMapMethod<Object?, Object?>('resolve', {
       'url': url,
     }))!,
+  );
+
+  @override
+  Future<PlaylistPreview> resolvePlaylist(String url) async =>
+      PlaylistPreview.fromMap(
+        (await _methods.invokeMapMethod<Object?, Object?>('resolvePlaylist', {
+          'url': url,
+        }))!,
+      );
+
+  @override
+  Future<LocalPlaylist> importSoundCloudPlaylist({
+    required String name,
+    required String sourceUrl,
+    required List<OfflineTrack> tracks,
+  }) async => LocalPlaylist.fromMap(
+    (await _methods.invokeMapMethod<Object?, Object?>(
+      'importSoundCloudPlaylist',
+      {
+        'name': name,
+        'sourceUrl': sourceUrl,
+        'tracks': tracks.map((t) => t.toMap()).toList(),
+      },
+    ))!,
   );
 
   @override

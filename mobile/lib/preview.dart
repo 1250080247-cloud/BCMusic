@@ -206,6 +206,48 @@ class _PreviewPlatform extends AndroidMusicPlatform {
   }
 
   @override
+  Future<PlaylistPreview> resolvePlaylist(String url) async {
+    return PlaylistPreview(
+      id: 'preview_playlist',
+      name: 'SoundCloud Preview Playlist',
+      uploader: 'SoundCloud Artist',
+      sourceUrl: url,
+      provider: 'soundcloud',
+      tracks: _songs.take(3).map((s) => OfflineTrack(
+        id: 'soundcloud_${s.id}',
+        title: s.title,
+        artist: s.artist,
+        sourceUrl: s.sourceUrl,
+        provider: 'soundcloud',
+        status: 'preview',
+      )).toList(),
+    );
+  }
+
+  @override
+  Future<LocalPlaylist> importSoundCloudPlaylist({
+    required String name,
+    required String sourceUrl,
+    required List<OfflineTrack> tracks,
+  }) async {
+    final id = '${++_playlistSequence}';
+    final playlist = LocalPlaylist(
+      id: id,
+      name: name,
+      trackIds: tracks.map((t) => t.id).toList(),
+    );
+    _playlists[id] = playlist;
+    for (final track in tracks) {
+      _downloads[track.id] = OfflineTrack.fromMap({
+        ...track.toMap(),
+        'status': 'completed',
+      });
+    }
+    _updates.add(_state);
+    return playlist;
+  }
+
+  @override
   Future<void> enqueue(String id) async {
     final song = _songs.firstWhere((song) => song.id == id);
     final track = await resolve(song.sourceUrl);

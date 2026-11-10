@@ -14,6 +14,14 @@ class TrackResolver {
 
     init { NewPipe.init(SourceDownloader()) }
 
+    fun resolvePlaylist(input: String): ResolvedPlaylist {
+        val source = SourceUrl.parse(input)
+        if (source.provider != "soundcloud") {
+            throw SourceFailure("UNSUPPORTED", "Chỉ hỗ trợ playlist SoundCloud.")
+        }
+        return SoundCloudResolver().resolvePlaylist(source)
+    }
+
     fun resolve(input: String, quality: String = "standard", compact: Boolean = false): ResolvedTrack {
         val effectiveQuality = if (compact && quality == "standard") "economy" else quality
         val source = SourceUrl.parse(input)

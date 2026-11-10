@@ -240,6 +240,30 @@ class MainActivity : FlutterActivity(), EventChannel.StreamHandler {
                         val track = withContext(Dispatchers.IO) { library.resolver.resolve(input, quality) }
                         result.success(track.metadata.toMap() + mapOf("status" to "preview", "artworkUrl" to track.artworkUrl))
                     }
+                    "resolvePlaylist" -> {
+                        val input = call.argument<String>("url") ?: throw SourceFailure("INVALID_URL", "Thiếu link playlist.")
+                        val playlist = withContext(Dispatchers.IO) { library.resolver.resolvePlaylist(input) }
+                        result.success(mapOf(
+                            "id" to playlist.id,
+                            "name" to playlist.name,
+                            "uploader" to playlist.uploader,
+                            "sourceUrl" to playlist.sourceUrl,
+                            "artworkUrl" to playlist.artworkUrl,
+                            "provider" to "soundcloud",
+                            "tracks" to playlist.tracks.map { track ->
+                                mapOf(
+                                    "id" to track.id,
+                                    "title" to track.title,
+                                    "artist" to track.artist,
+                                    "sourceUrl" to track.sourceUrl,
+                                    "durationMs" to track.durationMs,
+                                    "artworkUrl" to track.artworkUrl,
+                                    "provider" to "soundcloud",
+                                    "status" to "preview"
+                                )
+                            }
+                        ))
+                    }
                     "enqueue" -> {
                         notificationPermission()
                         val trackId = id(call)
@@ -432,6 +456,43 @@ class MainActivity : FlutterActivity(), EventChannel.StreamHandler {
                             }
                         }
                         library.emit(); result.success(null)
+                    }
+                    "importSoundCloudPlaylist" -> {
+                        notificationPermission()
+                        val name = call.argument<String>("name") ?: "SoundCloud Playlist"
+                        val tracksArg = call.argument<List<Map<String, Any?>>>("tracks") ?: emptyList()
+                        val quality = library.preferences.current.downloadQuality
+
+                        val created = withContext(Dispatchers.IO) {
+                            val playlist = library.playlists.create(name, null)
+                            for (trackMap in tracksArg) {
+                                val trackId = trackMap["id"] as? String ?: continue
+                                val trackUrl = trackMap["sourceUrl"] as? String ?: ""
+                                val download = library.findNullable(trackId)
+                                if (download != null && download.state == Download.STATE_COMPLETED) {
+                                    runCatching { library.playlists.add(playlist.id, trackId) }
+                                } else {
+                                    if (library.pendingPlaylists.entries.size < 500) {
+                                        runCatching { library.pendingPlaylists.add(trackId, playlist.id) }
+                                    }
+                                    if (download == null || download.state == Download.STATE_FAILED || download.state == Download.STATE_STOPPED) {
+                                        try {
+                                            val resolved = runCatching {
+                                                library.resolver.findOrResolve(trackId, trackUrl.ifBlank { null }, quality)
+                                            }.getOrNull()
+                                            if (resolved != null) {
+                                                library.enqueue(resolved)
+                                            }
+                                        } catch (_: Exception) {
+                                            // Continue with other tracks
+                                        }
+                                    }
+                                }
+                            }
+                            playlist
+                        }
+                        library.emit()
+                        result.success(created.toMap())
                     }
                     "deletePlaylist" -> {
                         val playlist = call.argument<String>("playlistId") ?: ""

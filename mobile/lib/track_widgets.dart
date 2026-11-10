@@ -136,6 +136,98 @@ class PreviewCard extends StatelessWidget {
   );
 }
 
+class PlaylistPreviewCard extends StatelessWidget {
+  const PlaylistPreviewCard({
+    super.key,
+    required this.playlist,
+    required this.busy,
+    required this.onDownload,
+    required this.onClose,
+  });
+
+  final PlaylistPreview playlist;
+  final bool busy;
+  final VoidCallback onDownload, onClose;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.all(16),
+    decoration: BoxDecoration(
+      color: context.palette.surface,
+      borderRadius: BorderRadius.circular(20),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            TrackArtwork(url: playlist.artworkUrl),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'SOUNDCLOUD PLAYLIST',
+                    style: TextStyle(
+                      fontSize: 10,
+                      letterSpacing: 1.5,
+                      fontWeight: FontWeight.w700,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    playlist.name,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 16,
+                    ),
+                  ),
+                  if (playlist.uploader.isNotEmpty)
+                    Text(
+                      playlist.uploader,
+                      style: TextStyle(color: context.palette.muted),
+                    ),
+                ],
+              ),
+            ),
+            IconButton(
+              tooltip: 'Đóng thông tin playlist',
+              onPressed: busy ? null : onClose,
+              icon: const Icon(Icons.close_rounded),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        Text(
+          'Danh sách gồm ${playlist.tracks.length} bài hát',
+          style: TextStyle(fontSize: 12, color: context.palette.muted),
+        ),
+        const SizedBox(height: 12),
+        FilledButton.icon(
+          onPressed: busy ? null : onDownload,
+          icon: busy
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.download_rounded),
+          label: Text(
+            busy
+                ? 'Đang thêm vào hàng tải…'
+                : 'Tải vào Playlist offline',
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
 class TrackTile extends StatelessWidget {
   const TrackTile({
     super.key,

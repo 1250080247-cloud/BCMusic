@@ -15,6 +15,7 @@ class MusicController extends ChangeNotifier {
   StreamSubscription<LibrarySnapshot>? _subscription;
   LibrarySnapshot snapshot = const LibrarySnapshot();
   OfflineTrack? preview;
+  PlaylistPreview? playlistPreview;
   String? error;
   bool loading = true, resolving = false, downloading = false;
   bool openingSource = false;
@@ -278,16 +279,31 @@ class MusicController extends ChangeNotifier {
   Future<void> inspect(String input, {bool soundCloudOnly = false}) async {
     final request = ++_request;
     preview = null;
+    playlistPreview = null;
     error = null;
     resolving = true;
     _notify();
     try {
       final source = SourceLink.parse(input);
       if (soundCloudOnly && source.provider != 'soundcloud') {
-        throw const FormatException('Hãy nhập link một bài SoundCloud.');
+        throw const FormatException('Hãy nhập link một bài hoặc playlist SoundCloud.');
       }
-      final result = await platform.resolve(source.url);
-      if (!_disposed && request == _request) preview = result;
+      if (source.isPlaylist) {
+        final result = await platform.resolvePlaylist(source.url);
+        if (!_disposed && request == _request) playlistPreview = result;
+      } else {
+        try {
+          final result = await platform.resolve(source.url);
+          if (!_disposed && request == _request) preview = result;
+        } catch (e) {
+          if (source.provider == 'soundcloud') {
+            final result = await platform.resolvePlaylist(source.url);
+            if (!_disposed && request == _request) playlistPreview = result;
+          } else {
+            rethrow;
+          }
+        }
+      }
     } catch (e) {
       if (!_disposed && request == _request) _setError(e);
     } finally {
@@ -301,6 +317,7 @@ class MusicController extends ChangeNotifier {
   void dismissPreview() {
     _request++;
     preview = null;
+    playlistPreview = null;
     resolving = false;
     _notify();
   }
@@ -317,6 +334,26 @@ class MusicController extends ChangeNotifier {
     }
     downloading = false;
     _notify();
+  }
+
+  Future<void> downloadPlaylistPreview() async {
+    final playlist = playlistPreview;
+    if (playlist == null || downloading) return;
+    downloading = true;
+    _notify();
+    try {
+      await platform.importSoundCloudPlaylist(
+        name: playlist.name,
+        sourceUrl: playlist.sourceUrl,
+        tracks: playlist.tracks,
+      );
+      if (playlistPreview?.id == playlist.id) playlistPreview = null;
+    } catch (e) {
+      _setError(e);
+    } finally {
+      downloading = false;
+      _notify();
+    }
   }
 
   Future<void> downloadSource(String url) async {
