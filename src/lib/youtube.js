@@ -10,21 +10,67 @@ const emptyResult = () => ({ items: [], nextPageToken: null, prevPageToken: null
 const MIN_DURATION_SECONDS = 30;
 const aboveMinimumDuration = song => Number.isFinite(song.durationSeconds) && song.durationSeconds > MIN_DURATION_SECONDS;
 
+export const STRONG_MUSIC_REGEX = /(?<![\p{L}])(ost|soundtrack|nhạc\s*phim|nhac\s*phim|theme\s*song|official\s*audio|official\s*music\s*video|mv|lyrics|ca\s*khúc|bài\s*hát)(?![\p{L}])/iu;
+
+export const MIX_MUSIC_REGEX = /(?<![\p{L}])(lofi|nonstop|non-stop|non\s*stop|playlist|album|remix|chill|cover|liên\s*khúc|tuyển\s*tập|tuyển\s*chọn|tổng\s*hợp|mashup|nhạc\s*không\s*lời|acoustic|piano|jazz|ambient|relax|study|sleep|hours?|giờ|best\s*of|top\s*hits|mix)(?![\p{L}])/iu;
+
+export const BLACKLIST_REGEX = /(?<![\p{L}])(trailer|teaser|full\s*movie|phim\s*ngắn|phim\s*chiếu\s*rạp|review\s*phim|thuyết\s*minh|lồng\s*tiếng|vietsub|reaction|podcast|behind\s*the\s*scenes?|tập\s*(?:\d+|full|cuối|đặc\s*biệt))(?![\p{L}])/iu;
+
+/**
+ * Checks if query contains long-form music keywords (only MIX keywords).
+ */
+export function isLongFormQuery(query) {
+  if (!query || typeof query !== 'string') return false;
+  const normalized = query.normalize('NFC');
+  return MIX_MUSIC_REGEX.test(normalized);
+}
+
+/**
+ * Soft filter for music content.
+ * - Drops blacklisted videos (trailers, full movies, episodes...) unless title contains STRONG music keyword.
+ * - Videos > 15 mins (900s) are dropped unless title or query contains STRONG or MIX music keyword.
+ * - Missing duration or duration <= 0 (livestreams) are not considered long.
+ */
+export function filterMusicSongs(songs, query = '') {
+  if (!Array.isArray(songs)) return [];
+  const normalizedQuery = (query || '').normalize('NFC');
+  const queryIsLongForm = isLongFormQuery(normalizedQuery);
+
+  return songs.filter((song) => {
+    const title = (song.title || '').normalize('NFC');
+    const hasStrong = STRONG_MUSIC_REGEX.test(title);
+    const isBlacklisted = BLACKLIST_REGEX.test(title);
+
+    // Blacklist check: only STRONG keywords can rescue from blacklist
+    if (isBlacklisted && !hasStrong) {
+      return false;
+    }
+
+    // Duration check (> 15 minutes = 900 seconds)
+    const duration = song.durationSeconds;
+    const isLong = Number.isFinite(duration) && duration > 900 && duration > 0;
+    if (isLong) {
+      const exempt = hasStrong || MIX_MUSIC_REGEX.test(title) || queryIsLongForm;
+      if (!exempt) {
+        return false;
+      }
+    }
+
+    return true;
+  });
+}
+
 /**
  * Build a unique cache key from query parameters.
  */
 function buildCacheKey(query, order, maxResults, pageToken) {
-  // The old namespace contained only 4–20 minute results (videoDuration=medium).
-  // Keep those documents intact. Apply the current minimum on every cache read,
-  // including entries previously verified only for Shorts.
-  return `youtube-no-shorts-v2:${query}__${order}__${maxResults}__${pageToken || 'first'}`;
+  return `youtube-music-v3:${query}__${order}__${maxResults}__${pageToken || 'first'}`;
 }
 
 /**
- * Fetch songs from YouTube Data API v3.
- * This is the raw fetch without any caching.
+ * Query YouTube Data API v3 directly.
  */
-async function fetchFromYouTube(searchQuery, pageToken = '', order = 'relevance', maxResults = 5) {
+async function queryYouTubeAPI(searchQuery, pageToken = '', order = 'relevance', maxResults = 5, categoryId = null) {
   const API_KEY = process.env.YOUTUBE_API_KEY;
   if (!API_KEY) return null;
 
@@ -37,6 +83,7 @@ async function fetchFromYouTube(searchQuery, pageToken = '', order = 'relevance'
     order,
     key: API_KEY,
   });
+  if (categoryId) params.set('videoCategoryId', categoryId);
   if (pageToken) params.set('pageToken', pageToken);
   const url = `https://www.googleapis.com/youtube/v3/search?${params}`;
 
@@ -65,8 +112,6 @@ async function fetchFromYouTube(searchQuery, pageToken = '', order = 'relevance'
         const statsUrl = `https://www.googleapis.com/youtube/v3/videos?part=statistics,contentDetails&id=${videoIds}&key=${API_KEY}`;
         const statsRes = await fetch(statsUrl, { cache: 'no-store', signal: AbortSignal.timeout(STATS_TIMEOUT_MS) });
         const statsData = await statsRes.json();
-        // Duration is required to enforce the cutoff. Do not cache a provider
-        // outage as a successful empty search page.
         if (!statsRes.ok || !Array.isArray(statsData.items)) return null;
         for (const v of statsData.items) {
           viewCounts[v.id] = v.statistics?.viewCount || null;
@@ -87,7 +132,7 @@ async function fetchFromYouTube(searchQuery, pageToken = '', order = 'relevance'
       id: item.id.videoId,
       title: item.snippet.title,
       artist: item.snippet.channelTitle,
-      thumbnail: item.snippet.thumbnails.high?.url || item.snippet.thumbnails.medium?.url,
+      thumbnail: item.snippet.thumbnails?.high?.url || item.snippet.thumbnails?.medium?.url || null,
       publishedAt: item.snippet.publishedAt,
       viewCount: viewCounts[item.id.videoId] || null,
       durationSeconds: durations[item.id.videoId] ?? null,
@@ -110,6 +155,55 @@ async function fetchFromYouTube(searchQuery, pageToken = '', order = 'relevance'
     }
     return null;
   }
+}
+
+/**
+ * Fetch songs from YouTube Data API v3 with 2-tier fallback and soft filtering.
+ */
+async function fetchFromYouTube(searchQuery, pageToken = '', order = 'relevance', maxResults = 5) {
+  // Tier 1: Search with music category (videoCategoryId = 10)
+  const result1 = await queryYouTubeAPI(searchQuery, pageToken, order, maxResults, '10');
+  if (!result1) return null;
+
+  const tier1Filtered = filterMusicSongs(result1.items, searchQuery);
+  const nextPageToken = result1.nextPageToken || null;
+  const prevPageToken = result1.prevPageToken || null;
+  let shortsFilterComplete = result1.shortsFilterComplete;
+
+  let finalItems = [...tier1Filtered];
+  const threshold = Math.min(5, maxResults);
+
+  // Tier 2 (Fallback): Only run when on first page (!pageToken), filtered results < threshold,
+  // and Tier 1 filter completed cleanly (no probe timeout/budget exhaustion)
+  if (!pageToken && tier1Filtered.length < threshold && result1.shortsFilterComplete) {
+    console.log(`[YouTube Search] Tier 2 fallback triggered for query: "${searchQuery}"`);
+    const fallbackQuery = `${searchQuery} official audio`;
+    const result2 = await queryYouTubeAPI(fallbackQuery, '', order, maxResults, null);
+    if (result2 && Array.isArray(result2.items)) {
+      if (!result2.shortsFilterComplete) shortsFilterComplete = false;
+      const tier2Filtered = filterMusicSongs(result2.items, searchQuery);
+      const seenIds = new Set(finalItems.map((item) => item.id));
+      for (const item of tier2Filtered) {
+        if (!seenIds.has(item.id)) {
+          seenIds.add(item.id);
+          finalItems.push(item);
+        }
+      }
+    }
+  }
+
+  // Safety fallback: only return unfiltered list when result after filtering (after both tiers) === 0.
+  // If 1-4 songs remain after filtering, keep those filtered songs.
+  if (finalItems.length === 0 && result1.items.length > 0) {
+    finalItems = result1.items;
+  }
+
+  return {
+    items: finalItems,
+    shortsFilterComplete,
+    nextPageToken,
+    prevPageToken,
+  };
 }
 
 /**

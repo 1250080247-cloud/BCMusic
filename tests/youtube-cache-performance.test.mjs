@@ -19,9 +19,12 @@ async function fixture({ cached = null, writeFails = false, searchFails = false,
       const url = new URL(input);
       requests.push({ url, options });
       if (url.pathname.endsWith('/search')) return searchFails ? Response.json({ error: { message: 'Test outage' } }, { status: 503 })
-        : Response.json({ items: empty ? [] : [{ id: { videoId: song.id }, snippet: { title: song.title, channelTitle: 'Artist', thumbnails: { high: { url: 'https://i.ytimg.com/test.jpg' } } } }], nextPageToken: 'next' });
-      if (url.pathname.endsWith('/videos')) return Response.json({ items: [{ id: song.id, statistics: { viewCount: '50' }, contentDetails: { duration: 'PT2M' } }] });
-      return new Response(null, { status: 303, headers: { location: `https://www.youtube.com/watch?v=${song.id}` } });
+        : Response.json({ items: empty ? [] : [song.id, 'NORMAL00002', 'NORMAL00003', 'NORMAL00004', 'NORMAL00005'].map((id, i) => ({ id: { videoId: id }, snippet: { title: i === 0 ? song.title : `Song ${id}`, channelTitle: 'Artist', thumbnails: { high: { url: 'https://i.ytimg.com/test.jpg' } } } })), nextPageToken: 'next' });
+      if (url.pathname.endsWith('/videos')) {
+        const ids = (url.searchParams.get('id') || '').split(',').filter(Boolean);
+        return Response.json({ items: ids.map(id => ({ id, statistics: { viewCount: '50' }, contentDetails: { duration: 'PT2M' } })) });
+      }
+      return new Response(null, { status: 303, headers: { location: `https://www.youtube.com/watch?v=${url.pathname.split('/').pop()}` } });
     },
   });
   return { getYouTubeSongs, requests, writes };

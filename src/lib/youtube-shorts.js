@@ -12,7 +12,9 @@ const VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
 
 export function parseYouTubeDuration(value) {
   if (typeof value !== 'string' || value.length > 64) return null;
-  const match = value.match(/^P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+(?:\.\d+)?)S)?)?$/);
+  const trimmed = value.trim();
+  if (trimmed === '' || trimmed === 'P0D') return 0;
+  const match = trimmed.match(/^P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+(?:\.\d+)?)S)?)?$/);
   if (!match || !match.slice(1).some(Boolean)) return null;
   const seconds = Number(match[1] || 0) * 86400 + Number(match[2] || 0) * 3600
     + Number(match[3] || 0) * 60 + Number(match[4] || 0);

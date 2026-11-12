@@ -28,7 +28,7 @@ async function youtubeFixture({ ids = [normalId, shortId, longId, unknownId], ca
       requests.push({ url, options });
       if (url.hostname === 'www.googleapis.com' && url.pathname.endsWith('/search')) {
         return Response.json({ items: ids.map(id => ({ id: { videoId: id }, snippet: {
-          title: `Song ${id}`, channelTitle: 'Artist', thumbnails: { high: { url: 'https://i.ytimg.com/test.jpg' } }, publishedAt: '2026-01-01',
+          title: `Song ${id} Album`, channelTitle: 'Artist', thumbnails: { high: { url: 'https://i.ytimg.com/test.jpg' } }, publishedAt: '2026-01-01',
         } })), nextPageToken: 'next-real-token', prevPageToken: 'previous-real-token' });
       }
       if (url.hostname === 'www.googleapis.com' && url.pathname.endsWith('/videos')) {
@@ -126,7 +126,7 @@ test('legacy cached rows are filtered without mutating the read object and use t
   assert.equal(fixture.requests.some(({ url }) => url.hostname === 'www.googleapis.com'), false);
   const fresh = await youtubeFixture({ ids: [normalId, shortId, longId] });
   await fresh.getYouTubeSongs('music');
-  assert.match(fresh.writes[0][0].cacheKey, /^youtube-no-shorts-v2:/);
+  assert.match(fresh.writes[0][0].cacheKey, /^youtube-music-v3:/);
 });
 
 for (const [name, response] of [
