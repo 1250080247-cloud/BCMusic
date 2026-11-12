@@ -227,6 +227,8 @@ class AndroidMusicPlatform implements MusicPlatform {
       _methods.invokeMethod('skip', {'direction': direction});
   @override
   Future<void> openWebsite() => _methods.invokeMethod('openWebsite');
+  Future<void> openUrl(String url) =>
+      _methods.invokeMethod('openUrl', {'url': url});
   @override
   Future<void> updatePreferences(Map<String, Object> changes) =>
       _methods.invokeMethod('updatePreferences', changes);

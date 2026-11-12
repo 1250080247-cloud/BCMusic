@@ -101,6 +101,7 @@ void main() {
               controller: discovery,
               history: history,
               onRecordSearch: (query) => history.insert(0, query),
+              onTrackAction: (_, _) {},
               onSong: (_, _) {},
               onPlay: (_, _) {},
             ),
@@ -207,10 +208,7 @@ void main() {
       of: find.byWidgetPredicate(
         (widget) => widget is FeedRows && widget.ranked,
       ),
-      matching: find.byWidgetPredicate(
-        (widget) =>
-            widget is PopupMenuButton && widget.tooltip == 'Tùy chọn Bài thử',
-      ),
+      matching: find.byTooltip('Tùy chọn Bài thử'),
     );
     await tester.scrollUntilVisible(
       menu,
@@ -423,7 +421,7 @@ void main() {
         scrollable: find.descendant(
           of: find.byType(SettingsScreen),
           matching: find.byType(Scrollable),
-        ),
+        ).first,
       );
       expect(find.text('Giao diện sáng'), findsOneWidget);
       await tester.pumpWidget(const SizedBox());

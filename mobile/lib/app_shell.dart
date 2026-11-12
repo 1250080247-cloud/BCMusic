@@ -15,6 +15,7 @@ import 'playlist_screen.dart';
 import 'profile_screen.dart';
 import 'settings_screen.dart';
 import 'track_actions.dart';
+import 'update_checker.dart';
 
 class AppShell extends StatefulWidget {
   const AppShell({
@@ -42,6 +43,25 @@ class _AppShellState extends State<AppShell> {
     _updateTab();
     _music.addListener(_updateTab);
     widget.discovery.selectGenre(0);
+    _checkUpdate();
+  }
+
+  Future<void> _checkUpdate() async {
+    final update = await checkForUpdate();
+    if (update != null && mounted) {
+      await showUpdateDialog(
+        context,
+        update,
+        onDownload: update.downloadUrl.isEmpty
+            ? null
+            : () {
+                final platform = _music.platform;
+                if (platform is AndroidMusicPlatform) {
+                  platform.openUrl(update.downloadUrl);
+                }
+              },
+      );
+    }
   }
 
   @override
@@ -244,6 +264,7 @@ class _AppShellState extends State<AppShell> {
           onRecordSearch: _music.recordSearch,
           onSong: _song,
           onPlay: _playSong,
+          onTrackAction: _discoveryTrackAction,
         ),
         HomeScreen(controller: _music, onAddToPlaylist: _addToPlaylist),
         PlaylistScreen(
@@ -254,6 +275,7 @@ class _AppShellState extends State<AppShell> {
           controller: _music,
           soundCloud: true,
           onAddToPlaylist: _addToPlaylist,
+          onPlaylist: () => _select(_playlists),
         ),
       ];
       return Scaffold(

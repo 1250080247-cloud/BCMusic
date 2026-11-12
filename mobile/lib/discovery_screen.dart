@@ -607,10 +607,12 @@ class SearchScreen extends StatefulWidget {
     required this.controller,
     required this.onSong,
     required this.onPlay,
+    required this.onTrackAction,
     required this.history,
     required this.onRecordSearch,
   });
   final DiscoveryController controller;
+  final DiscoveryTrackAction onTrackAction;
   final DiscoverySelection onSong, onPlay;
   final List<String> history;
   final ValueChanged<String> onRecordSearch;
@@ -844,14 +846,26 @@ class _SearchScreenState extends State<SearchScreen> {
                         ),
                         onTap: () =>
                             widget.onSong(song, controller.searchResults),
-                        trailing: IconButton(
-                          tooltip: 'Phát ${song.title}',
-                          onPressed: () =>
-                              widget.onPlay(song, controller.searchResults),
-                          icon: Icon(
-                            Icons.play_arrow_rounded,
-                            color: context.palette.text,
-                          ),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              tooltip: 'Phát ${song.title}',
+                              onPressed: () =>
+                                  widget.onPlay(song, controller.searchResults),
+                              icon: Icon(
+                                Icons.play_arrow_rounded,
+                                color: context.palette.text,
+                              ),
+                            ),
+                            TrackMenu(
+                              title: song.title,
+                              artist: song.artist,
+                              artworkUrl: song.thumbnail,
+                              onSelected: (action) =>
+                                  widget.onTrackAction(action, song),
+                            ),
+                          ],
                         ),
                       ),
                     ),

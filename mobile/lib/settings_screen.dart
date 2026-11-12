@@ -74,18 +74,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                     const Text('Tốc độ phát'),
                     const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 4,
-                      children: [
-                        for (final speed in AppPreferences.speeds)
-                          ChoiceChip(
-                            label: Text(playbackSpeedLabel(speed)),
-                            selected: settings.speed == speed,
-                            onSelected: (_) => widget.controller
-                                .updatePreferences({'speed': speed}),
-                          ),
-                      ],
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        spacing: 8,
+                        children: [
+                          for (final speed in AppPreferences.speeds)
+                            ChoiceChip(
+                              label: Text(playbackSpeedLabel(speed)),
+                              selected: settings.speed == speed,
+                              onSelected: (_) => widget.controller
+                                  .updatePreferences({'speed': speed}),
+                            ),
+                        ],
+                      ),
                     ),
                     const SizedBox(height: 12),
                     SwitchListTile(

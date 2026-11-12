@@ -12,10 +12,12 @@ class HomeScreen extends StatefulWidget {
     required this.controller,
     this.soundCloud = false,
     required this.onAddToPlaylist,
+    this.onPlaylist,
   });
   final MusicController controller;
   final bool soundCloud;
   final ValueChanged<OfflineTrack> onAddToPlaylist;
+  final VoidCallback? onPlaylist;
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
@@ -227,6 +229,15 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                           selected: _filter == filter,
                           onSelected: (_) => setState(() => _filter = filter),
+                        ),
+                      if (widget.onPlaylist case final onPlaylist?)
+                        ActionChip(
+                          label: const Text('Playlist'),
+                          padding: const EdgeInsets.symmetric(horizontal: 6),
+                          labelPadding: const EdgeInsets.symmetric(
+                            horizontal: 2,
+                          ),
+                          onPressed: onPlaylist,
                         ),
                     ],
                   ),

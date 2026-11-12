@@ -747,6 +747,37 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
                   ],
                 ),
                 _accountPlaylists(),
+                const SizedBox(height: 12),
+                OutlinedButton.icon(
+                  onPressed: () async {
+                    final name = await showDialog<String>(
+                      context: context,
+                      builder: (_) => const _PlaylistNameDialog(),
+                    );
+                    if (name == null || !context.mounted) return;
+                    final platform = widget.controller.platform;
+                    if (platform is! AndroidMusicPlatform) return;
+                    try {
+                      await platform.saveWebPlaylistSong(
+                        const {},
+                        playlistName: name,
+                      );
+                      if (context.mounted) _refreshAccount();
+                    } on PlatformException catch (error) {
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              error.message ?? 'Chưa tạo được playlist.',
+                            ),
+                          ),
+                        );
+                      }
+                    }
+                  },
+                  icon: const Icon(Icons.add_rounded),
+                  label: const Text('Tạo playlist mới'),
+                ),
                 const SizedBox(height: 20),
               ],
               Text(
@@ -1029,37 +1060,43 @@ class PlaylistDetail extends StatelessWidget {
                 style: TextStyle(color: context.palette.muted),
               ),
               const SizedBox(height: 24),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
+              Row(
                 children: [
-                  FilledButton.icon(
-                    style: playButtonStyle(context),
-                    onPressed: tracks.isEmpty
-                        ? null
-                        : () => controller.play(tracks.first, queueIds: queue),
-                    icon: const Icon(Icons.play_arrow_rounded),
-                    label: const Text('Phát playlist'),
+                  Flexible(
+                    child: FilledButton.icon(
+                      style: playButtonStyle(context),
+                      onPressed: tracks.isEmpty
+                          ? null
+                          : () => controller.play(tracks.first, queueIds: queue),
+                      icon: const Icon(Icons.play_arrow_rounded),
+                      label: const Text('Phát playlist'),
+                    ),
                   ),
-                  OutlinedButton.icon(
-                    onPressed: tracks.isEmpty
-                        ? null
-                        : () {
-                            final shuffled = List<OfflineTrack>.from(tracks)..shuffle();
-                            controller.play(
-                              shuffled.first,
-                              queueIds: shuffled.map((t) => t.id).toList(),
-                            );
-                          },
-                    icon: const Icon(Icons.shuffle_rounded),
-                    label: const Text('Trộn bài'),
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: OutlinedButton.icon(
+                      onPressed: tracks.isEmpty
+                          ? null
+                          : () {
+                              final shuffled = List<OfflineTrack>.from(tracks)..shuffle();
+                              controller.play(
+                                shuffled.first,
+                                queueIds: shuffled.map((t) => t.id).toList(),
+                              );
+                            },
+                      icon: const Icon(Icons.shuffle_rounded),
+                      label: const Text('Trộn bài'),
+                    ),
                   ),
-                  OutlinedButton.icon(
-                    onPressed: available.isEmpty
-                        ? null
-                        : () => _add(context, available),
-                    icon: const Icon(Icons.add_rounded),
-                    label: const Text('Thêm bài'),
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: OutlinedButton.icon(
+                      onPressed: available.isEmpty
+                          ? null
+                          : () => _add(context, available),
+                      icon: const Icon(Icons.add_rounded),
+                      label: const Text('Thêm bài'),
+                    ),
                   ),
                 ],
               ),

@@ -43,3 +43,5 @@ next-env.d.ts
 
 # Android build tools downloaded locally for BCMusic (never source artifacts)
 /.android-tools/
+docs/PHAT-HANH-APK-ANDROID.md
+.vscode/settings.json

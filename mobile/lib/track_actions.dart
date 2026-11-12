@@ -15,41 +15,127 @@ class TrackMenu extends StatelessWidget {
     required this.onSelected,
     this.onDownload,
     this.inPlaylist = false,
+    this.artist,
+    this.artworkUrl,
   });
 
   final String title;
   final ValueChanged<TrackAction> onSelected;
   final VoidCallback? onDownload;
   final bool inPlaylist;
+  final String? artist;
+  final String? artworkUrl;
 
   @override
-  Widget build(BuildContext context) => PopupMenuButton<TrackAction>(
+  Widget build(BuildContext context) => IconButton(
     tooltip: 'Tùy chọn $title',
-    onSelected: onSelected,
-    itemBuilder: (_) => [
-      const PopupMenuItem(value: TrackAction.share, child: Text('Chia sẻ')),
-      if (onDownload case final download?)
-        PopupMenuItem(onTap: download, child: const Text('Tải xuống')),
-      const PopupMenuItem(
-        value: TrackAction.playlist,
-        child: Text('Thêm vào danh sách phát'),
-      ),
-      if (inPlaylist)
-        const PopupMenuItem(
-          value: TrackAction.remove,
-          child: Text('Xóa khỏi danh sách phát'),
-        ),
-      const PopupMenuItem(
-        value: TrackAction.queue,
-        child: Text('Thêm vào danh sách chờ'),
-      ),
-      const PopupMenuItem(
-        value: TrackAction.info,
-        child: Text('Thông tin bài hát'),
-      ),
-    ],
+    icon: const Icon(Icons.more_vert_rounded),
+    onPressed: () => showTrackMenuSheet(
+      context,
+      title: title,
+      artist: artist,
+      artworkUrl: artworkUrl,
+      onSelected: onSelected,
+      onDownload: onDownload,
+      inPlaylist: inPlaylist,
+    ),
   );
 }
+
+Future<void> showTrackMenuSheet(
+  BuildContext context, {
+  required String title,
+  String? artist,
+  String? artworkUrl,
+  required ValueChanged<TrackAction> onSelected,
+  VoidCallback? onDownload,
+  bool inPlaylist = false,
+}) => showModalBottomSheet<void>(
+  context: context,
+  useSafeArea: true,
+  builder: (context) => SafeArea(
+    top: false,
+    child: SingleChildScrollView(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (artist != null || artworkUrl != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+              child: Row(
+                children: [
+                  TrackArtwork(url: artworkUrl, size: 52),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          title,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 15,
+                          ),
+                        ),
+                        if (artist != null) ...[
+                          const SizedBox(height: 2),
+                          Text(
+                            artist,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: .6),
+                              fontSize: 13,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          const Divider(),
+          ListTile(
+            leading: const Icon(Icons.share_rounded),
+            title: const Text('Chia sẻ'),
+            onTap: () { Navigator.pop(context); onSelected(TrackAction.share); },
+          ),
+          if (onDownload case final download?)
+            ListTile(
+              leading: const Icon(Icons.download_rounded),
+              title: const Text('Tải xuống'),
+              onTap: () { Navigator.pop(context); download(); },
+            ),
+          ListTile(
+            leading: const Icon(Icons.playlist_add_rounded),
+            title: const Text('Thêm vào danh sách phát'),
+            onTap: () { Navigator.pop(context); onSelected(TrackAction.playlist); },
+          ),
+          if (inPlaylist)
+            ListTile(
+              leading: const Icon(Icons.playlist_remove_rounded),
+              title: const Text('Xóa khỏi danh sách phát'),
+              onTap: () { Navigator.pop(context); onSelected(TrackAction.remove); },
+            ),
+          ListTile(
+            leading: const Icon(Icons.queue_music_rounded),
+            title: const Text('Thêm vào danh sách chờ'),
+            onTap: () { Navigator.pop(context); onSelected(TrackAction.queue); },
+          ),
+          ListTile(
+            leading: const Icon(Icons.info_outline_rounded),
+            title: const Text('Thông tin bài hát'),
+            onTap: () { Navigator.pop(context); onSelected(TrackAction.info); },
+          ),
+          const SizedBox(height: 8),
+        ],
+      ),
+    ),
+  ),
+);
 
 Future<void> shareSong(
   BuildContext context,
