@@ -9,46 +9,43 @@ import 'main.dart' show BCMusicApp;
 import 'models.dart';
 import 'platform_bridge.dart';
 
+// Danh sách bài hát mẫu đồng bộ từ App.tsx
 const _songs = [
   DiscoverySong(
     id: 'M7lc1UVf-VE',
-    title: 'Sau cơn mưa',
-    artist: 'BCMusic Preview',
+    title: 'Chìm Sâu',
+    artist: 'RPT MCK · Trung Trần',
+    durationMs: 156000,
   ),
   DiscoverySong(
     id: 'jNQXAC9IVRw',
-    title: 'Một ngày bình yên',
-    artist: 'BCMusic Preview',
+    title: 'Có em',
+    artist: 'Madihu · Low G',
+    durationMs: 217000,
   ),
   DiscoverySong(
     id: 'aqz-KE-bpKQ',
-    title: 'Giai điệu về đêm',
-    artist: 'BCMusic Preview',
+    title: 'Một Ngày Chẳng Nắng',
+    artist: 'Pháo · Thịnh Suy',
+    durationMs: 245000,
   ),
   DiscoverySong(
     id: 'dQw4w9WgXcQ',
-    title: 'Qua ô cửa sổ',
-    artist: 'BCMusic Preview',
+    title: 'Nàng Thơ',
+    artist: 'Hoàng Dũng',
+    durationMs: 254000,
   ),
   DiscoverySong(
     id: 'kJQP7kiw5Fk',
-    title: 'Phố lên đèn',
-    artist: 'BCMusic Preview',
+    title: 'Bước Qua Nhau',
+    artist: 'Vũ.',
+    durationMs: 270000,
   ),
   DiscoverySong(
     id: '9bZkp7q19f0',
-    title: 'Chuyến xe cuối',
-    artist: 'BCMusic Preview',
-  ),
-  DiscoverySong(
-    id: 'JGwWNGJdvx8',
-    title: 'Tháng mười một',
-    artist: 'BCMusic Preview',
-  ),
-  DiscoverySong(
-    id: 'OPf0YbXqDm0',
-    title: 'Bên kia thành phố',
-    artist: 'BCMusic Preview',
+    title: 'Va Vào Giai Điệu Này',
+    artist: 'RPT MCK',
+    durationMs: 210000,
   ),
 ];
 
@@ -85,7 +82,11 @@ class _PreviewDiscovery implements DiscoveryRepository, SearchSuggestions {
   Future<List<DiscoverySong>> feed(String query, String order) async => _songs;
   @override
   Future<List<DiscoverySong>> search(String query) async => _songs
-      .where((song) => song.title.toLowerCase().contains(query.toLowerCase()))
+      .where(
+        (song) => '${song.title} ${song.artist}'.toLowerCase().contains(
+          query.toLowerCase(),
+        ),
+      )
       .toList();
   @override
   Future<List<String>> suggestions(String query) async =>
@@ -99,8 +100,8 @@ class _PreviewPlatform extends AndroidMusicPlatform {
   DiscoverySong? _song;
   var _position = 38000;
   var _playing = false;
-  var _preferences = const AppPreferences(volume: 65);
-  final _searches = <String>[];
+  var _preferences = const AppPreferences(volume: 75);
+  final _searches = <String>['Chìm Sâu', 'Hoàng Dũng', 'Nhạc lofi'];
   final _history = <String, OfflineTrack>{};
   final _favorites = <String, Map<String, String>>{
     for (final song in _songs.take(2))
@@ -129,15 +130,63 @@ class _PreviewPlatform extends AndroidMusicPlatform {
     stream.onCancel = timer.cancel;
   }, isBroadcast: true);
 
-  final _downloads = <String, OfflineTrack>{};
-  final _playlists = <String, LocalPlaylist>{};
+  final _downloads = <String, OfflineTrack>{
+    for (final song in _songs.take(3))
+      song.id: OfflineTrack(
+        id: song.id,
+        title: song.title,
+        artist: song.artist,
+        sourceUrl: song.sourceUrl,
+        provider: 'youtube',
+        status: 'completed',
+        bytes: 4850000,
+        durationMs: song.durationMs,
+        artworkUrl: song.thumbnail,
+      ),
+  };
+
+  final _playlists = <String, LocalPlaylist>{
+    '1': LocalPlaylist(
+      id: '1',
+      name: 'Một mình cũng vui',
+      trackIds: _songs.take(3).map((s) => s.id).toList(),
+    ),
+  };
+
   final _webPlaylists =
-      <String, ({String name, Map<String, Map<String, String>> songs})>{};
-  int _playlistSequence = 0;
+      <String, ({String name, Map<String, Map<String, String>> songs})>{
+        'web_1': (
+          name: 'Những ngày rất chill',
+          songs: {
+            for (final song in _songs.take(4))
+              song.id: {
+                'id': song.id,
+                'title': song.title,
+                'artist': song.artist,
+                'sourceUrl': song.sourceUrl,
+                'thumbnail': song.thumbnail,
+              },
+          },
+        ),
+        'web_2': (
+          name: 'On repeat',
+          songs: {
+            for (final song in _songs.skip(1).take(4))
+              song.id: {
+                'id': song.id,
+                'title': song.title,
+                'artist': song.artist,
+                'sourceUrl': song.sourceUrl,
+                'thumbnail': song.thumbnail,
+              },
+          },
+        ),
+      };
+  int _playlistSequence = 3;
 
   AccountProfile? _account = const AccountProfile(
-    name: "Người nghe nhạc",
-    username: "bcmusic-preview",
+    name: 'An Nguyễn',
+    username: 'an.nguyen',
   );
 
   LibrarySnapshot get _state => LibrarySnapshot(
@@ -158,11 +207,12 @@ class _PreviewPlatform extends AndroidMusicPlatform {
               sourceUrl: _song!.sourceUrl,
               provider: 'youtube',
               status: 'streaming',
+              durationMs: _song!.durationMs,
               artworkUrl: _song!.thumbnail,
             ),
       isPlaying: _playing,
       positionMs: _position,
-      durationMs: 282000,
+      durationMs: _song?.durationMs ?? 240000,
       offline: false,
       repeatMode: _repeatMode,
       shuffle: _shuffle,
@@ -175,9 +225,12 @@ class _PreviewPlatform extends AndroidMusicPlatform {
   Future<LibrarySnapshot> getState() async => _state;
   @override
   Future<void> playSource(String url, {bool autoTransition = false}) async {
-    _song = _songs.firstWhere((song) => song.sourceUrl == url);
+    _song = _songs.firstWhere(
+      (song) => song.sourceUrl == url,
+      orElse: () => _songs.first,
+    );
     _playing = true;
-    _position = 38000;
+    _position = 24000;
     _history.remove(url);
     _history[url] = _state.playback.track!;
     _updates.add(_state);
@@ -193,7 +246,10 @@ class _PreviewPlatform extends AndroidMusicPlatform {
 
   @override
   Future<OfflineTrack> resolve(String url) async {
-    final song = _songs.firstWhere((song) => song.sourceUrl == url);
+    final song = _songs.firstWhere(
+      (song) => song.sourceUrl == url,
+      orElse: () => _songs.first,
+    );
     return OfflineTrack(
       id: song.id,
       title: song.title,
@@ -201,6 +257,7 @@ class _PreviewPlatform extends AndroidMusicPlatform {
       sourceUrl: song.sourceUrl,
       provider: 'youtube',
       status: 'preview',
+      durationMs: song.durationMs,
       artworkUrl: song.thumbnail,
     );
   }
@@ -213,14 +270,20 @@ class _PreviewPlatform extends AndroidMusicPlatform {
       uploader: 'SoundCloud Artist',
       sourceUrl: url,
       provider: 'soundcloud',
-      tracks: _songs.take(3).map((s) => OfflineTrack(
-        id: 'soundcloud_${s.id}',
-        title: s.title,
-        artist: s.artist,
-        sourceUrl: s.sourceUrl,
-        provider: 'soundcloud',
-        status: 'preview',
-      )).toList(),
+      tracks: _songs
+          .take(3)
+          .map(
+            (s) => OfflineTrack(
+              id: 'soundcloud_${s.id}',
+              title: s.title,
+              artist: s.artist,
+              sourceUrl: s.sourceUrl,
+              provider: 'soundcloud',
+              status: 'preview',
+              durationMs: s.durationMs,
+            ),
+          )
+          .toList(),
     );
   }
 
@@ -249,11 +312,15 @@ class _PreviewPlatform extends AndroidMusicPlatform {
 
   @override
   Future<void> enqueue(String id) async {
-    final song = _songs.firstWhere((song) => song.id == id);
+    final song = _songs.firstWhere(
+      (song) => song.id == id,
+      orElse: () => _songs.first,
+    );
     final track = await resolve(song.sourceUrl);
     _downloads[id] = OfflineTrack.fromMap({
       ...track.toMap(),
       'status': 'completed',
+      'bytes': 4600000,
     });
     _updates.add(_state);
   }
@@ -329,9 +396,14 @@ class _PreviewPlatform extends AndroidMusicPlatform {
     final id = playlistId ?? '${++_playlistSequence}';
     final playlist = _webPlaylists.putIfAbsent(
       id,
-      () => (name: playlistName!, songs: <String, Map<String, String>>{}),
+      () => (
+        name: playlistName ?? 'Playlist mới',
+        songs: <String, Map<String, String>>{},
+      ),
     );
-    playlist.songs[song['id']!] = song;
+    if (song['id'] != null) {
+      playlist.songs[song['id']!] = song;
+    }
   }
 
   @override
@@ -397,6 +469,19 @@ class _PreviewPlatform extends AndroidMusicPlatform {
   }
 
   final _lyricsCache = <String, String>{};
+  static final String _defaultSyncedLyrics = jsonEncode({
+    'status': 'synced',
+    'source': 'BCMusic Concept',
+    'plainLyrics': '',
+    'lines': [
+      {'timeMs': 0, 'text': 'Khi đêm buông xuống thật êm'},
+      {'timeMs': 12000, 'text': 'Một giai điệu khẽ gọi tên'},
+      {'timeMs': 22000, 'text': 'Để giai điệu dẫn lối'},
+      {'timeMs': 35000, 'text': 'Để cảm xúc lên tiếng'},
+      {'timeMs': 50000, 'text': 'Chạm vào những giấc mơ'},
+      {'timeMs': 68000, 'text': 'Và để tâm hồn tự do'},
+    ],
+  });
 
   @override
   Future<void> saveLyrics(String trackId, String data) async {
@@ -404,7 +489,8 @@ class _PreviewPlatform extends AndroidMusicPlatform {
   }
 
   @override
-  Future<String?> getLyrics(String trackId) async => _lyricsCache[trackId];
+  Future<String?> getLyrics(String trackId) async =>
+      _lyricsCache[trackId] ?? _defaultSyncedLyrics;
 
   @override
   Future<void> setSleepTimer(int? minutes, {bool atEndOfTrack = false}) async {}
@@ -466,6 +552,10 @@ class _PreviewPlatform extends AndroidMusicPlatform {
       'volume': _preferences.volume,
       'speed': _preferences.speed,
       'motion': _preferences.motion,
+      'repeatMode': _preferences.repeatMode,
+      'shuffle': _preferences.shuffle,
+      'downloadQuality': _preferences.downloadQuality,
+      'crossfade': _preferences.crossfade,
       ...changes,
     });
     _updates.add(_state);

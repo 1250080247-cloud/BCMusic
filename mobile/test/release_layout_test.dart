@@ -1,4 +1,5 @@
 import 'package:bcmusic/app_controller.dart';
+import 'package:bcmusic/app_shell.dart';
 import 'package:bcmusic/discovery.dart';
 import 'package:bcmusic/main.dart';
 import 'package:bcmusic/models.dart';
@@ -46,7 +47,7 @@ void main() {
         ]) {
           await tester.tap(
             find.descendant(
-              of: find.byType(NavigationBar),
+              of: find.byType(GlassNavigationBar),
               matching: find.text(label),
             ),
           );

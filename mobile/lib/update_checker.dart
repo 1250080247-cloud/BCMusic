@@ -1,11 +1,12 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
 import 'app_config.dart';
 
-const _currentVersion = '1.2.9';
+const _currentVersion = '1.3.0';
 
 class AppUpdate {
   const AppUpdate({
@@ -18,6 +19,9 @@ class AppUpdate {
 }
 
 Future<AppUpdate?> checkForUpdate() async {
+  // dart:io HttpClient is not available on the web platform.
+  if (kIsWeb) return null;
+
   final client = HttpClient()..connectionTimeout = const Duration(seconds: 10);
   try {
     final uri = Uri.https(BCMusicConfig.websiteHost, '/api/version');

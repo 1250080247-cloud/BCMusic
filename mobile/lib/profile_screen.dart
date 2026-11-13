@@ -118,136 +118,216 @@ class _ProfileScreenState extends State<ProfileScreen> {
     builder: (context, _) {
       final account = widget.controller.snapshot.account;
       final local = widget.controller.snapshot.playlists;
+      final downloadedCount = widget.controller.tracks
+          .where((t) => t.isReady)
+          .length;
+
       return Scaffold(
-        appBar: AppBar(title: const Text('Hồ sơ')),
+        appBar: AppBar(title: const Text('Hồ sơ của bạn')),
         body: account == null
             ? const Center(child: Text('Bạn chưa đăng nhập.'))
             : SafeArea(
                 top: false,
-                child: ListView(
-                  padding: const EdgeInsets.all(20),
-                  children: [
-                    Card(
-                      margin: EdgeInsets.zero,
-                      child: Padding(
-                        padding: const EdgeInsets.all(20),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            Center(
-                              child: _editing && _pickedImage != null
-                                  ? ClipOval(
-                                      child: Image.memory(
-                                        base64Decode(
-                                          _pickedImage!.split(',').last,
+                child: FutureBuilder<Map<String, dynamic>>(
+                  future: _collections,
+                  builder: (context, snapshot) {
+                    final favorites = [
+                      if (snapshot.data?['favorites'] case final List rows)
+                        for (final row in rows.whereType<Map>())
+                          ?readAccountSong(row),
+                    ];
+                    final playlists = AccountPlaylist.readAll(
+                      snapshot.data?['playlists'],
+                    );
+
+                    return ListView(
+                      padding: const EdgeInsets.fromLTRB(18, 12, 18, 32),
+                      children: [
+                        // Thẻ Hồ sơ Liquid Glass (.profile-avatar & .profile-stats trong App.tsx)
+                        LiquidGlassCard(
+                          borderRadius: 22,
+                          padding: const EdgeInsets.all(22),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Center(
+                                child: _editing && _pickedImage != null
+                                    ? ClipOval(
+                                        child: Image.memory(
+                                          base64Decode(
+                                            _pickedImage!.split(',').last,
+                                          ),
+                                          width: 76,
+                                          height: 76,
+                                          fit: BoxFit.cover,
                                         ),
-                                        width: 88,
-                                        height: 88,
-                                        fit: BoxFit.cover,
-                                      ),
-                                    )
-                                  : AccountAvatar(account: account, size: 88),
-                            ),
-                            const SizedBox(height: 16),
-                            Text(
-                              account.name,
-                              textAlign: TextAlign.center,
-                              style: Theme.of(context).textTheme.headlineSmall,
-                            ),
-                            if (account.username.isNotEmpty)
-                              Text(
-                                '@${account.username}',
+                                      )
+                                    : AccountAvatar(account: account, size: 76),
+                              ),
+                              const SizedBox(height: 16),
+                              const Text(
+                                'YOUR PERSONAL MUSIC SPACE',
                                 textAlign: TextAlign.center,
-                                style: TextStyle(color: context.palette.muted),
-                              ),
-                            const SizedBox(height: 16),
-                            if (_editing) ...[
-                              if (!kIsWeb)
-                                OutlinedButton.icon(
-                                  onPressed: _saving || _picking
-                                      ? null
-                                      : _chooseImage,
-                                  icon: const Icon(Icons.photo_outlined),
-                                  label: const Text('Chọn ảnh đại diện'),
-                                ),
-                              const SizedBox(height: 8),
-                              TextField(
-                                controller: _name,
-                                maxLength: 50,
-                                enabled: !_saving,
-                                decoration: const InputDecoration(
-                                  labelText: 'Tên hiển thị',
+                                style: TextStyle(
+                                  fontSize: 9,
+                                  letterSpacing: 1.8,
+                                  fontWeight: FontWeight.w600,
+                                  color: Color(0xffac92c1),
                                 ),
                               ),
-                              const SizedBox(height: 8),
-                              TextField(
-                                controller: _imageUrl,
-                                enabled: !_saving,
-                                keyboardType: TextInputType.url,
-                                decoration: const InputDecoration(
-                                  labelText: 'URL ảnh đại diện (HTTPS)',
+                              const SizedBox(height: 6),
+                              Text(
+                                'Chào ${account.name}.',
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                  fontSize: 23,
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: -0.6,
                                 ),
                               ),
-                              if (_error != null)
-                                Padding(
-                                  padding: const EdgeInsets.only(top: 8),
-                                  child: Text(
-                                    _error!,
-                                    style: TextStyle(
-                                      color: Theme.of(context)
-                                          .colorScheme
-                                          .error,
+                              if (account.username.isNotEmpty) ...[
+                                const SizedBox(height: 4),
+                                Text(
+                                  '@${account.username}',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: context.palette.muted,
+                                  ),
+                                ),
+                              ],
+                              const SizedBox(height: 18),
+
+                              // .profile-stats 3 cột
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 16,
+                                ),
+                                decoration: const BoxDecoration(
+                                  border: Border.symmetric(
+                                    horizontal: BorderSide(
+                                      color: Color(0x14ffffff),
                                     ),
                                   ),
                                 ),
-                              const SizedBox(height: 12),
-                              Wrap(
-                                spacing: 12,
-                                children: [
-                                  FilledButton(
+                                child: Row(
+                                  children: [
+                                    _ProfileStatItem(
+                                      value: '${favorites.length}',
+                                      label: 'Bài yêu thích',
+                                    ),
+                                    _ProfileStatItem(
+                                      value:
+                                          '${playlists.length + local.length}',
+                                      label: 'Playlist',
+                                    ),
+                                    _ProfileStatItem(
+                                      value: '$downloadedCount',
+                                      label: 'Bài offline',
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(height: 18),
+                              if (_editing) ...[
+                                if (!kIsWeb)
+                                  OutlinedButton.icon(
                                     onPressed: _saving || _picking
                                         ? null
-                                        : _save,
-                                    child: Text(_saving ? 'Đang lưu…' : 'Lưu'),
+                                        : _chooseImage,
+                                    icon: const Icon(Icons.photo_outlined),
+                                    label: const Text('Chọn ảnh đại diện'),
                                   ),
-                                  TextButton(
-                                    onPressed: _saving || _picking
-                                        ? null
-                                        : () =>
-                                              setState(() => _editing = false),
-                                    child: const Text('Hủy'),
+                                const SizedBox(height: 10),
+                                TextField(
+                                  controller: _name,
+                                  maxLength: 50,
+                                  enabled: !_saving,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Tên hiển thị',
                                   ),
-                                ],
-                              ),
-                            ] else
-                              OutlinedButton.icon(
-                                onPressed: _platform == null
-                                    ? null
-                                    : () => _edit(account),
-                                icon: const Icon(Icons.edit_outlined),
-                                label: const Text('Chỉnh sửa hồ sơ'),
-                              ),
-                          ],
+                                ),
+                                const SizedBox(height: 10),
+                                TextField(
+                                  controller: _imageUrl,
+                                  enabled: !_saving,
+                                  keyboardType: TextInputType.url,
+                                  decoration: const InputDecoration(
+                                    labelText: 'URL ảnh đại diện (HTTPS)',
+                                  ),
+                                ),
+                                if (_error != null)
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 8),
+                                    child: Text(
+                                      _error!,
+                                      style: TextStyle(
+                                        color: Theme.of(
+                                          context,
+                                        ).colorScheme.error,
+                                      ),
+                                    ),
+                                  ),
+                                const SizedBox(height: 14),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: FilledButton(
+                                        style: playButtonStyle(context),
+                                        onPressed: _saving || _picking
+                                            ? null
+                                            : _save,
+                                        child: Text(
+                                          _saving ? 'Đang lưu…' : 'Lưu hồ sơ',
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 10),
+                                    TextButton(
+                                      onPressed: _saving || _picking
+                                          ? null
+                                          : () => setState(
+                                              () => _editing = false,
+                                            ),
+                                      child: const Text('Hủy'),
+                                    ),
+                                  ],
+                                ),
+                              ] else
+                                OutlinedButton.icon(
+                                  style: OutlinedButton.styleFrom(
+                                    shape: const StadiumBorder(),
+                                    side: const BorderSide(
+                                      color: Color(0x36c2b4dd),
+                                    ),
+                                  ),
+                                  onPressed: _platform == null
+                                      ? null
+                                      : () => _edit(account),
+                                  icon: const Icon(
+                                    Icons.edit_outlined,
+                                    size: 18,
+                                  ),
+                                  label: const Text('Chỉnh sửa hồ sơ'),
+                                ),
+                            ],
+                          ),
                         ),
-                      ),
-                    ),
-                    const SizedBox(height: 24),
-                    FutureBuilder<Map<String, dynamic>>(
-                      future: _collections,
-                      builder: (context, snapshot) {
-                        if (snapshot.connectionState != ConnectionState.done) {
-                          return const LinearProgressIndicator(
+                        const SizedBox(height: 24),
+
+                        if (snapshot.connectionState != ConnectionState.done)
+                          const LinearProgressIndicator(
                             semanticsLabel: 'Đang tải hồ sơ',
-                          );
-                        }
-                        if (snapshot.hasError) {
-                          final error = snapshot.error;
-                          return Column(
+                          )
+                        else if (snapshot.hasError)
+                          Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                error is PlatformException
-                                    ? error.message ?? 'Chưa tải được hồ sơ.'
+                                snapshot.error is PlatformException
+                                    ? (snapshot.error as PlatformException)
+                                              .message ??
+                                          'Chưa tải được hồ sơ.'
                                     : 'Chưa tải được hồ sơ.',
                               ),
                               TextButton(
@@ -255,104 +335,138 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 child: const Text('Thử lại'),
                               ),
                             ],
-                          );
-                        }
-                        final favorites = [
-                          if (snapshot.data?['favorites'] case final List rows)
-                            for (final row in rows.whereType<Map>())
-                              ?readAccountSong(row),
-                        ];
-                        final playlists = AccountPlaylist.readAll(
-                          snapshot.data?['playlists'],
-                        );
-                        return Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    'Bài nhạc đã tim (${favorites.length})',
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .titleLarge,
+                          )
+                        else ...[
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  'Bài hát yêu thích (${favorites.length})',
+                                  style: const TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w700,
                                   ),
                                 ),
-                                IconButton(
-                                  tooltip: 'Làm mới bài đã tim',
-                                  onPressed: _refreshCollections,
-                                  icon: const Icon(Icons.refresh_rounded),
+                              ),
+                              IconButton(
+                                tooltip: 'Làm mới bài đã tim',
+                                onPressed: _refreshCollections,
+                                icon: const Icon(
+                                  Icons.refresh_rounded,
+                                  size: 20,
                                 ),
-                              ],
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          if (favorites.isEmpty)
+                            const Padding(
+                              padding: EdgeInsets.symmetric(vertical: 12),
+                              child: Text(
+                                'Chưa có bài hát yêu thích.',
+                                style: TextStyle(color: Color(0xff8e849e)),
+                              ),
                             ),
-                            if (favorites.isEmpty)
-                              const ListTile(
-                                contentPadding: EdgeInsets.zero,
-                                title: Text('Chưa có bài hát yêu thích.'),
-                              ),
-                            for (final song in favorites)
-                              accountSongTile(
-                                widget.controller,
-                                song,
-                                favorites,
-                              ),
-                            const SizedBox(height: 20),
-                            Text(
-                              'Playlist của bạn (${playlists.length})',
-                              style: Theme.of(context).textTheme.titleLarge,
+                          for (final song in favorites)
+                            accountSongTile(
+                              widget.controller,
+                              song,
+                              favorites,
                             ),
-                            if (playlists.isEmpty)
-                              const ListTile(
-                                contentPadding: EdgeInsets.zero,
-                                title: Text('Chưa có playlist trên web.'),
-                              ),
-                            for (final playlist in playlists)
-                              AccountPlaylistTile(
-                                controller: widget.controller,
-                                playlist: playlist,
-                                onReturn: _refreshCollections,
-                              ),
-                          ],
-                        );
-                      },
-                    ),
-                    const SizedBox(height: 20),
-                    Text(
-                      'Playlist offline (${local.length})',
-                      style: Theme.of(context).textTheme.titleLarge,
-                    ),
-                    if (local.isEmpty)
-                      const ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        title: Text('Chưa có playlist trên thiết bị.'),
-                      ),
-                    for (final playlist in local)
-                      ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        leading: const Icon(Icons.download_done_rounded),
-                        title: Text(playlist.name),
-                        subtitle: Text('${playlist.trackIds.length} bài'),
-                        trailing: const Icon(Icons.chevron_right_rounded),
-                        onTap: () => Navigator.push<void>(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => PlaylistDetail(
-                              controller: widget.controller,
-                              playlistId: playlist.id,
+                          const SizedBox(height: 22),
+                          Text(
+                            'Playlist tài khoản (${playlists.length})',
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w700,
                             ),
                           ),
+                          const SizedBox(height: 8),
+                          if (playlists.isEmpty)
+                            const Padding(
+                              padding: EdgeInsets.symmetric(vertical: 12),
+                              child: Text(
+                                'Chưa có playlist trên web.',
+                                style: TextStyle(color: Color(0xff8e849e)),
+                              ),
+                            ),
+                          for (final playlist in playlists)
+                            AccountPlaylistTile(
+                              controller: widget.controller,
+                              playlist: playlist,
+                              onReturn: _refreshCollections,
+                            ),
+                        ],
+                        const SizedBox(height: 22),
+                        Text(
+                          'Playlist offline (${local.length})',
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
-                      ),
-                    const SizedBox(height: 12),
-                    TextButton(
-                      onPressed: () => Navigator.pop(context),
-                      child: const Text('Đóng'),
-                    ),
-                  ],
+                        const SizedBox(height: 8),
+                        if (local.isEmpty)
+                          const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 12),
+                            child: Text(
+                              'Chưa có playlist trên thiết bị.',
+                              style: TextStyle(color: Color(0xff8e849e)),
+                            ),
+                          ),
+                        for (final playlist in local)
+                          ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            leading: const Icon(
+                              Icons.download_done_rounded,
+                              color: Color(0xffc2abf3),
+                            ),
+                            title: Text(playlist.name),
+                            subtitle: Text('${playlist.trackIds.length} bài hát'),
+                            trailing: const Icon(Icons.chevron_right_rounded),
+                            onTap: () => Navigator.push<void>(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => PlaylistDetail(
+                                  controller: widget.controller,
+                                  playlistId: playlist.id,
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
+                    );
+                  },
                 ),
               ),
       );
     },
+  );
+}
+
+class _ProfileStatItem extends StatelessWidget {
+  const _ProfileStatItem({required this.value, required this.label});
+  final String value, label;
+
+  @override
+  Widget build(BuildContext context) => Expanded(
+    child: Column(
+      children: [
+        Text(
+          value,
+          style: const TextStyle(
+            fontSize: 24,
+            fontWeight: FontWeight.w700,
+            color: Color(0xffd6bee7),
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          label,
+          style: const TextStyle(fontSize: 11, color: Color(0xff9c8aa9)),
+        ),
+      ],
+    ),
   );
 }
 
@@ -365,16 +479,34 @@ class AccountAvatar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final name = account.name.trim();
-    final fallback = CircleAvatar(
-      radius: size / 2,
-      backgroundColor: context.palette.raised,
-      foregroundColor: context.palette.text,
+    // Chuẩn màu .avatar trong index.css (#dac4ab -> #7d5d5c)
+    final fallback = Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xffdac4ab), Color(0xff7d5d5c)],
+        ),
+        border: Border.all(color: const Color(0x33ffffff), width: 1.5),
+      ),
+      alignment: Alignment.center,
       child: name.isEmpty
-          ? const Icon(Icons.person_outline_rounded, size: 18)
+          ? const Icon(
+              Icons.person_outline_rounded,
+              size: 18,
+              color: Color(0xff3c2e31),
+            )
           : Text(
               name.characters.first.toUpperCase(),
               maxLines: 1,
-              style: TextStyle(fontSize: size * .42),
+              style: TextStyle(
+                fontSize: size * .42,
+                fontWeight: FontWeight.w700,
+                color: const Color(0xff3c2e31),
+              ),
             ),
     );
     final uri = account.avatarUri;

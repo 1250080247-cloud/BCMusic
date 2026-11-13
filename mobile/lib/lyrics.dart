@@ -215,7 +215,7 @@ class LyricsRepository {
           if (durationSeconds > 0) 'duration': durationSeconds.toString(),
         });
         final req = await _client.getUrl(uri).timeout(const Duration(seconds: 6));
-        req.headers.set('Lrclib-Client', 'BCMusic/1.2.6 (Android)');
+        req.headers.set('Lrclib-Client', 'BCMusic/1.3.0 (Android)');
         req.headers.set(HttpHeaders.acceptHeader, 'application/json');
         final res = await req.close().timeout(const Duration(seconds: 6));
         if (res.statusCode == 200) {

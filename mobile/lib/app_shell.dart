@@ -140,13 +140,13 @@ class _AppShellState extends State<AppShell> {
       useSafeArea: true,
       builder: (context) => SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.fromLTRB(24, 12, 24, 28),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Row(
                 children: [
-                  SongImage(song: song, size: 72),
+                  SongImage(song: song, size: 68),
                   const SizedBox(width: 16),
                   Expanded(
                     child: Column(
@@ -154,35 +154,47 @@ class _AppShellState extends State<AppShell> {
                       children: [
                         Text(
                           song.title,
-                          style: Theme.of(context).textTheme.titleLarge,
+                          style: const TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
-                        const SizedBox(height: 4),
+                        const SizedBox(height: 5),
                         Text(
                           song.artist,
-                          style: TextStyle(color: context.palette.muted),
+                          style: TextStyle(
+                            color: context.palette.muted,
+                            fontSize: 13,
+                          ),
                         ),
                         if (song.durationMs > 0)
-                          Text(
-                            formatTime(song.durationMs),
-                            style: TextStyle(color: context.palette.muted),
+                          Padding(
+                            padding: const EdgeInsets.only(top: 4),
+                            child: Text(
+                              formatTime(song.durationMs),
+                              style: TextStyle(
+                                color: context.palette.muted,
+                                fontSize: 12,
+                              ),
+                            ),
                           ),
                       ],
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 22),
               FilledButton.icon(
                 style: playButtonStyle(context),
                 onPressed: () => Navigator.pop(context, 'play'),
                 icon: const Icon(Icons.play_arrow_rounded),
                 label: const Text('Nghe trực tuyến'),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 10),
               OutlinedButton.icon(
                 onPressed: () => Navigator.pop(context, 'download'),
                 icon: const Icon(Icons.download_rounded),
-                label: const Text('Tải offline'),
+                label: const Text('Tải bản nghe offline'),
               ),
             ],
           ),
@@ -278,21 +290,49 @@ class _AppShellState extends State<AppShell> {
           onPlaylist: () => _select(_playlists),
         ),
       ];
+
       return Scaffold(
+        extendBody: true,
         appBar: AppBar(
           toolbarHeight: 64,
-          titleSpacing: 16,
+          titleSpacing: 18,
           title: Row(
             children: [
-              ClipOval(
-                child: Image.asset(
-                  'assets/images/logo.png',
-                  width: 40,
-                  height: 40,
-                  fit: BoxFit.cover,
+              // Logo .brand-logo từ App.tsx
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: const LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [Color(0xffc3b7fb), Color(0xff8b7acd)],
+                  ),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Color(0x30b5a4f0),
+                      blurRadius: 16,
+                    ),
+                  ],
+                ),
+                child: ClipOval(
+                  child: Image.asset(
+                    'assets/images/logo.png',
+                    width: 38,
+                    height: 38,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, _, _) => const Center(
+                      child: EqualizerBars(
+                        active: false,
+                        color: Color(0xff211a36),
+                        size: 18,
+                      ),
+                    ),
+                  ),
                 ),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 11),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -302,17 +342,20 @@ class _AppShellState extends State<AppShell> {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
+                        fontFamily: 'BeVietnamPro',
                         fontSize: 20,
                         fontWeight: FontWeight.w800,
-                        letterSpacing: -.6,
+                        letterSpacing: -0.8,
+                        color: context.palette.text,
                       ),
                     ),
+                    const SizedBox(height: 2),
                     Text(
                       getHeaderGreeting(account?.name),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        fontSize: 11,
+                        fontSize: 11.5,
                         color: context.palette.muted,
                       ),
                     ),
@@ -325,7 +368,22 @@ class _AppShellState extends State<AppShell> {
             PopupMenuButton<String>(
               tooltip: 'Tài khoản',
               icon: account == null
-                  ? const Icon(Icons.account_circle_outlined)
+                  ? Container(
+                      width: 34,
+                      height: 34,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        gradient: const LinearGradient(
+                          colors: [Color(0xffdac4ab), Color(0xff7d5d5c)],
+                        ),
+                        border: Border.all(color: Colors.white24, width: 1.5),
+                      ),
+                      child: const Icon(
+                        Icons.person_rounded,
+                        size: 18,
+                        color: Color(0xff3c2e31),
+                      ),
+                    )
                   : AccountAvatar(account: account),
               onSelected: (action) {
                 if (action == 'signOut') {
@@ -341,15 +399,9 @@ class _AppShellState extends State<AppShell> {
                       PopupMenuItem(value: 'signIn', child: Text('Đăng nhập')),
                       PopupMenuItem(value: 'register', child: Text('Đăng ký')),
                     ]
-                  : [
-                      const PopupMenuItem(
-                        value: 'profile',
-                        child: Text('Hồ sơ'),
-                      ),
-                      const PopupMenuItem(
-                        value: 'signOut',
-                        child: Text('Đăng xuất'),
-                      ),
+                  : const [
+                      PopupMenuItem(value: 'profile', child: Text('Hồ sơ')),
+                      PopupMenuItem(value: 'signOut', child: Text('Đăng xuất')),
                     ],
             ),
             IconButton(
@@ -360,10 +412,20 @@ class _AppShellState extends State<AppShell> {
                 useSafeArea: true,
                 builder: (_) => SettingsScreen(controller: _music),
               ),
-              icon: const Icon(Icons.settings_outlined),
+              icon: Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: const Color(0x0affffff),
+                  border: Border.all(color: const Color(0x18ffffff)),
+                ),
+                child: const Icon(Icons.settings_outlined, size: 18),
+              ),
             ),
             PopupMenuButton<String>(
               tooltip: 'Tùy chọn BCMusic',
+              icon: const Icon(Icons.more_horiz_rounded),
               onSelected: (value) {
                 if (value == 'link') {
                   _paste();
@@ -373,7 +435,7 @@ class _AppShellState extends State<AppShell> {
                   showAboutDialog(
                     context: context,
                     applicationName: 'BCMusic',
-                    applicationVersion: '1.2.6',
+                    applicationVersion: '1.3.0 · Liquid Glass',
                   );
                 }
               },
@@ -383,102 +445,200 @@ class _AppShellState extends State<AppShell> {
                 PopupMenuItem(value: 'about', child: Text('Về ứng dụng')),
               ],
             ),
-            const SizedBox(width: 6),
+            const SizedBox(width: 8),
           ],
         ),
-        body: Column(
-          children: [
-            if (_music.openingSource)
-              const LinearProgressIndicator(
-                semanticsLabel: 'Đang chuẩn bị phát',
-              ),
-            if ((_music.snapshot.accountError ?? _music.error)
-                case final error?)
-              Material(
-                color: context.palette.selection,
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 8, 4, 8),
-                        child: Semantics(liveRegion: true, child: Text(error)),
-                      ),
-                    ),
-                    IconButton(
-                      tooltip: 'Đóng thông báo',
-                      onPressed: _music.snapshot.accountError == null
-                          ? _music.clearError
-                          : _music.clearAccountError,
-                      icon: const Icon(Icons.close_rounded),
-                    ),
-                  ],
-                ),
-              ),
-            Expanded(
-              child: SafeArea(
-                top: false,
-                bottom: false,
-                child: IndexedStack(
-                  index: _tab,
-                  children: [
-                    for (final (index, page) in pages.indexed)
-                      ExcludeFocus(
-                        excluding: index != _tab,
-                        child: TickerMode(enabled: index == _tab, child: page),
-                      ),
-                  ],
-                ),
-              ),
+        body: Container(
+          decoration: const BoxDecoration(
+            gradient: RadialGradient(
+              center: Alignment(0.6, -1.0),
+              radius: 1.2,
+              colors: [Color(0x3839264a), Color(0x000b0d14)],
             ),
-          ],
-        ),
-        bottomNavigationBar: SafeArea(
-          top: false,
+          ),
           child: Column(
-            mainAxisSize: MainAxisSize.min,
             children: [
-              if (_music.playback.trackId != null)
-                PlayerControls(
-                  controller: _music,
-                  onDownload: _downloadSong,
-                  onAddToPlaylist: _addToPlaylist,
+              if (_music.openingSource)
+                const LinearProgressIndicator(
+                  minHeight: 2,
+                  semanticsLabel: 'Đang chuẩn bị phát',
                 ),
-              const Divider(height: 1),
-              NavigationBar(
-                selectedIndex: _tab,
-                onDestinationSelected: _select,
-                labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-                destinations: const [
-                  NavigationDestination(
-                    icon: Icon(Icons.home_outlined),
-                    selectedIcon: Icon(Icons.home_rounded),
-                    label: 'Trang chủ',
+              if ((_music.snapshot.accountError ?? _music.error)
+                  case final error?)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+                  child: LiquidGlassCard(
+                    borderRadius: 13,
+                    padding: const EdgeInsets.fromLTRB(14, 8, 6, 8),
+                    borderColor: const Color(0x45c0a3df),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Semantics(
+                            liveRegion: true,
+                            child: Text(
+                              error,
+                              style: const TextStyle(fontSize: 12.5),
+                            ),
+                          ),
+                        ),
+                        IconButton(
+                          tooltip: 'Đóng thông báo',
+                          onPressed: _music.snapshot.accountError == null
+                              ? _music.clearError
+                              : _music.clearAccountError,
+                          icon: const Icon(Icons.close_rounded, size: 18),
+                        ),
+                      ],
+                    ),
                   ),
-                  NavigationDestination(
-                    icon: Icon(Icons.search_rounded),
-                    label: 'Tìm kiếm',
+                ),
+              Expanded(
+                child: SafeArea(
+                  top: false,
+                  bottom: false,
+                  child: IndexedStack(
+                    index: _tab,
+                    children: [
+                      for (final (index, page) in pages.indexed)
+                        ExcludeFocus(
+                          excluding: index != _tab,
+                          child: TickerMode(
+                            enabled: index == _tab,
+                            child: page,
+                          ),
+                        ),
+                    ],
                   ),
-                  NavigationDestination(
-                    icon: Icon(Icons.library_music_outlined),
-                    selectedIcon: Icon(Icons.library_music_rounded),
-                    label: 'Thư viện',
-                  ),
-                  NavigationDestination(
-                    icon: Icon(Icons.queue_music_rounded),
-                    label: 'Playlist',
-                  ),
-                  NavigationDestination(
-                    icon: Icon(Icons.cloud_outlined),
-                    selectedIcon: Icon(Icons.cloud_rounded),
-                    label: 'SoundCloud',
-                  ),
-                ],
+                ),
               ),
             ],
           ),
         ),
+        bottomNavigationBar: SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (_music.playback.trackId != null)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: PlayerControls(
+                      controller: _music,
+                      onDownload: _downloadSong,
+                      onAddToPlaylist: _addToPlaylist,
+                    ),
+                  ),
+                GlassNavigationBar(
+                  selectedIndex: _tab,
+                  onDestinationSelected: _select,
+                ),
+              ],
+            ),
+          ),
+        ),
       );
     },
+  );
+}
+
+class GlassNavigationBar extends StatelessWidget {
+  const GlassNavigationBar({
+    super.key,
+    required this.selectedIndex,
+    required this.onDestinationSelected,
+  });
+
+  final int selectedIndex;
+  final ValueChanged<int> onDestinationSelected;
+
+  static const items = [
+    (Icons.home_outlined, Icons.home_rounded, 'Trang chủ'),
+    (Icons.search_rounded, Icons.search_rounded, 'Tìm kiếm'),
+    (Icons.library_music_outlined, Icons.library_music_rounded, 'Thư viện'),
+    (Icons.queue_music_rounded, Icons.queue_music_rounded, 'Playlist'),
+    (Icons.cloud_outlined, Icons.cloud_rounded, 'SoundCloud'),
+  ];
+
+  @override
+  Widget build(BuildContext context) => LiquidGlassCard(
+    borderRadius: 23,
+    blur: 32,
+    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 7),
+    gradient: const LinearGradient(
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+      colors: [Color(0xd9272a39), Color(0xed191d29)],
+    ),
+    borderColor: const Color(0x28bfc8e4),
+    child: SizedBox(
+      height: 58,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
+        children: [
+          for (final (index, item) in items.indexed)
+            Expanded(
+              child: InkWell(
+                borderRadius: BorderRadius.circular(18),
+                onTap: () => onDestinationSelected(index),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    AnimatedContainer(
+                      duration: const Duration(milliseconds: 220),
+                      width: 48,
+                      height: 31,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(20),
+                        gradient: selectedIndex == index
+                            ? const LinearGradient(
+                                colors: [
+                                  Color(0x38c1a4e0),
+                                  Color(0x20b2a3d5),
+                                ],
+                              )
+                            : null,
+                        border: Border.all(
+                          color: selectedIndex == index
+                              ? const Color(0x40c1ade5)
+                              : Colors.transparent,
+                        ),
+                      ),
+                      child: Icon(
+                        selectedIndex == index ? item.$2 : item.$1,
+                        size: 20,
+                        color: selectedIndex == index
+                            ? const Color(0xffe7dcfa)
+                            : const Color(0xff7f8399),
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Flexible(
+                      child: Text(
+                        item.$3,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: selectedIndex == index
+                              ? FontWeight.w700
+                              : FontWeight.w500,
+                          color: selectedIndex == index
+                              ? const Color(0xffd4c4e8)
+                              : const Color(0xff7f8399),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+        ],
+      ),
+    ),
   );
 }
 

@@ -12,6 +12,14 @@ import 'platform_bridge.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+  SystemChrome.setSystemUIOverlayStyle(
+    const SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: Brightness.light,
+      systemNavigationBarColor: Colors.transparent,
+      systemNavigationBarIconBrightness: Brightness.light,
+    ),
+  );
   LicenseRegistry.addLicense(() async* {
     final text = await rootBundle.loadString(
       'assets/licenses/NewPipeExtractor-GPL-3.0.txt',
@@ -55,11 +63,24 @@ class BCMusicApp extends StatelessWidget {
         }
         final width = (media.size.height * .474).clamp(320.0, 440.0).toDouble();
         return ColoredBox(
-          color: const Color(0xff08090d),
+          color: const Color(0xff07080d),
           child: Center(
-            child: SizedBox(
+            child: Container(
               width: width,
               height: media.size.height,
+              decoration: BoxDecoration(
+                border: Border.symmetric(
+                  vertical: BorderSide(
+                    color: Colors.white.withValues(alpha: 0.08),
+                  ),
+                ),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Color(0x66000000),
+                    blurRadius: 40,
+                  ),
+                ],
+              ),
               child: ClipRect(
                 child: MediaQuery(
                   data: media.copyWith(

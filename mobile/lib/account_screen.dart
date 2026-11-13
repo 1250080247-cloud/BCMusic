@@ -80,10 +80,10 @@ class _AccountScreenState extends State<AccountScreen> {
   Widget build(BuildContext context) => SafeArea(
     child: SingleChildScrollView(
       padding: EdgeInsets.fromLTRB(
-        22,
-        10,
-        22,
-        24 + MediaQuery.viewInsetsOf(context).bottom,
+        24,
+        8,
+        24,
+        28 + MediaQuery.viewInsetsOf(context).bottom,
       ),
       child: AutofillGroup(
         onDisposeAction: AutofillContextAction.cancel,
@@ -94,12 +94,20 @@ class _AccountScreenState extends State<AccountScreen> {
             children: [
               Row(
                 children: [
-                  Expanded(
-                    child: Text(
-                      _register ? 'Đăng ký BCMusic' : 'Đăng nhập BCMusic',
-                      style: Theme.of(context).textTheme.headlineSmall,
+                  Container(
+                    width: 48,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(15),
+                      color: const Color(0x1abda1e4),
+                      border: Border.all(color: const Color(0x28c6ade3)),
+                    ),
+                    child: const Icon(
+                      Icons.person_outline_rounded,
+                      color: Color(0xffc1a6dc),
                     ),
                   ),
+                  const Spacer(),
                   IconButton(
                     tooltip: 'Đóng',
                     onPressed: _busy ? null : () => Navigator.pop(context),
@@ -107,12 +115,41 @@ class _AccountScreenState extends State<AccountScreen> {
                   ),
                 ],
               ),
-              Text(
-                'Dùng cùng tài khoản với BCMusic trên web.',
-                style: TextStyle(color: context.palette.muted),
-              ),
               const SizedBox(height: 16),
+              const Text(
+                'YOUR PERSONAL MUSIC SPACE',
+                style: TextStyle(
+                  fontSize: 9.5,
+                  letterSpacing: 1.8,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xffac92c1),
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                _register ? 'Đăng ký BCMusic' : 'Đăng nhập BCMusic',
+                style: const TextStyle(
+                  fontSize: 23,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: -0.6,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Đồng bộ bài hát yêu thích và playlist cùng tài khoản BCMusic trên web.',
+                style: TextStyle(
+                  color: context.palette.muted,
+                  fontSize: 12.5,
+                  height: 1.5,
+                ),
+              ),
+              const SizedBox(height: 18),
               OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size(48, 46),
+                  side: const BorderSide(color: Color(0x36c2b4dd)),
+                  shape: const StadiumBorder(),
+                ),
                 onPressed: _busy
                     ? null
                     : () => _run(widget.controller.startGoogle),
@@ -121,7 +158,7 @@ class _AccountScreenState extends State<AccountScreen> {
                   _register ? 'Đăng ký bằng Google' : 'Đăng nhập bằng Google',
                 ),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 14),
               if (_register) ...[
                 TextFormField(
                   controller: _displayName,
@@ -134,7 +171,7 @@ class _AccountScreenState extends State<AccountScreen> {
                     counterText: '',
                   ),
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 12),
               ],
               TextFormField(
                 controller: _username,
@@ -145,7 +182,6 @@ class _AccountScreenState extends State<AccountScreen> {
                 autofillHints: const [AutofillHints.username],
                 validator: (value) {
                   final name = value?.trim().toLowerCase() ?? '';
-                  // Same rule as /api/auth/register: 3-30 chars of [a-z0-9_.].
                   if (_register) {
                     return RegExp(r'^[a-z0-9_.]{3,30}$').hasMatch(name)
                         ? null
@@ -158,7 +194,7 @@ class _AccountScreenState extends State<AccountScreen> {
                   counterText: '',
                 ),
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 12),
               TextFormField(
                 controller: _password,
                 enabled: !_busy,
@@ -200,12 +236,14 @@ class _AccountScreenState extends State<AccountScreen> {
                     error,
                     style: TextStyle(
                       color: Theme.of(context).colorScheme.error,
+                      fontSize: 12.5,
                     ),
                   ),
                 ),
               ],
-              const SizedBox(height: 16),
+              const SizedBox(height: 18),
               FilledButton(
+                style: playButtonStyle(context),
                 onPressed: _busy ? null : _submit,
                 child: Text(
                   _busy
@@ -213,6 +251,7 @@ class _AccountScreenState extends State<AccountScreen> {
                       : (_register ? 'Tạo tài khoản' : 'Đăng nhập'),
                 ),
               ),
+              const SizedBox(height: 6),
               TextButton(
                 onPressed: _busy
                     ? null

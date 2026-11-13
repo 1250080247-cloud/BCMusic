@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:bcmusic/account_screen.dart';
 import 'package:bcmusic/app_controller.dart';
+import 'package:bcmusic/app_shell.dart';
 import 'package:bcmusic/main.dart';
 import 'package:bcmusic/models.dart';
 import 'package:bcmusic/discovery.dart';
@@ -161,7 +162,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(
       find.descendant(
-        of: find.byType(NavigationBar),
+        of: find.byType(GlassNavigationBar),
         matching: find.text('Playlist'),
       ),
     );
