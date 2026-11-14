@@ -11,6 +11,24 @@ class BCMusicConfig {
     defaultValue: 'bc-music-gilt.vercel.app',
   );
 
+  /// Phiên bản app đang chạy. Phải khớp với `version` trong pubspec.yaml;
+  /// test/config_test.dart kiểm tra điều này.
+  static const String appVersion = '1.3.1';
+
+  /// Repo GitHub phát hành APK. Mỗi bản phát hành là một GitHub Release có
+  /// tag dạng vX.Y.Z và file .apk đính kèm.
+  static const String releaseRepo = String.fromEnvironment(
+    'BCMUSIC_RELEASE_REPO',
+    defaultValue: '1250080247-cloud/BCMusic',
+  );
+
+  static const String userAgent = 'BCMusic/$appVersion (Android)';
+
+  static Uri get latestReleaseUri => Uri.https(
+    'api.github.com',
+    '/repos/$releaseRepo/releases/latest',
+  );
+
   static String get websiteOrigin {
     final origin = defaultWebsiteOrigin.trim();
     if (origin.endsWith('/')) {

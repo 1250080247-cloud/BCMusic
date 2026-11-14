@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'app_config.dart';
 import 'app_controller.dart';
 import 'app_theme.dart';
 import 'models.dart';
@@ -342,7 +343,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               const SizedBox(height: 16),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: const [
+                children: [
                   Text(
                     'BCMusic.',
                     style: TextStyle(
@@ -355,7 +356,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   SizedBox(width: 8),
                   Flexible(
                     child: Text(
-                      'VERSION 1.3.0 · LIQUID GLASS',
+                      'VERSION ${BCMusicConfig.appVersion} · LIQUID GLASS',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(

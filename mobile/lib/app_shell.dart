@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import 'account_screen.dart';
+import 'app_config.dart';
 import 'app_controller.dart';
 import 'app_theme.dart';
 import 'discovery.dart';
@@ -435,7 +436,7 @@ class _AppShellState extends State<AppShell> {
                   showAboutDialog(
                     context: context,
                     applicationName: 'BCMusic',
-                    applicationVersion: '1.3.0 · Liquid Glass',
+                    applicationVersion: '${BCMusicConfig.appVersion} · Liquid Glass',
                   );
                 }
               },

@@ -6,7 +6,9 @@ import 'package:flutter/material.dart';
 
 import 'app_config.dart';
 
-const _currentVersion = '1.3.0';
+const _maxResponseBytes = 256 * 1024;
+const _maxChangelogChars = 600;
+final _versionTag = RegExp(r'^[vV]?(\d+(?:\.\d+)*)$');
 
 class AppUpdate {
   const AppUpdate({
@@ -18,17 +20,26 @@ class AppUpdate {
   final String version, date, changelog, downloadUrl;
 }
 
-Future<AppUpdate?> checkForUpdate() async {
+/// Asks GitHub for the latest published release of the app. Returns null when
+/// the app is up to date, when the check cannot finish (offline, rate limited,
+/// unexpected response), or on web.
+Future<AppUpdate?> checkForUpdate({
+  Uri? uri,
+  String currentVersion = BCMusicConfig.appVersion,
+}) async {
   // dart:io HttpClient is not available on the web platform.
   if (kIsWeb) return null;
 
   final client = HttpClient()..connectionTimeout = const Duration(seconds: 10);
   try {
-    final uri = Uri.https(BCMusicConfig.websiteHost, '/api/version');
-    final request = await client.getUrl(uri).timeout(
-      const Duration(seconds: 10),
-    );
-    request.headers.set(HttpHeaders.acceptHeader, 'application/json');
+    final request = await client
+        .getUrl(uri ?? BCMusicConfig.latestReleaseUri)
+        .timeout(const Duration(seconds: 10));
+    // GitHub's API rejects requests that carry no User-Agent header.
+    request.headers
+      ..set(HttpHeaders.acceptHeader, 'application/vnd.github+json')
+      ..set(HttpHeaders.userAgentHeader, BCMusicConfig.userAgent)
+      ..set('X-GitHub-Api-Version', '2022-11-28');
     final response = await request.close().timeout(
       const Duration(seconds: 15),
     );
@@ -38,20 +49,12 @@ Future<AppUpdate?> checkForUpdate() async {
     }
     final bytes = <int>[];
     await for (final chunk in response.timeout(const Duration(seconds: 10))) {
-      if (bytes.length + chunk.length > 64 * 1024) break;
+      if (bytes.length + chunk.length > _maxResponseBytes) break;
       bytes.addAll(chunk);
     }
     final json = jsonDecode(utf8.decode(bytes));
     if (json is! Map<String, dynamic>) return null;
-    final latest = json['version'] as String?;
-    if (latest == null || latest == _currentVersion) return null;
-    if (_compareVersions(latest, _currentVersion) <= 0) return null;
-    return AppUpdate(
-      version: latest,
-      date: (json['date'] as String?) ?? '',
-      changelog: (json['changelog'] as String?) ?? '',
-      downloadUrl: (json['downloadUrl'] as String?) ?? '',
-    );
+    return parseLatestRelease(json, currentVersion: currentVersion);
   } catch (_) {
     return null;
   } finally {
@@ -59,7 +62,30 @@ Future<AppUpdate?> checkForUpdate() async {
   }
 }
 
-int _compareVersions(String a, String b) {
+/// Turns the JSON of `GET /repos/{repo}/releases/latest` into an [AppUpdate]
+/// when its tag is newer than [currentVersion]. Drafts and pre-releases are
+/// ignored.
+AppUpdate? parseLatestRelease(
+  Map<String, dynamic> json, {
+  required String currentVersion,
+}) {
+  if (json['draft'] == true || json['prerelease'] == true) return null;
+  final tag = (_string(json['tag_name']) ?? '').trim();
+  final match = _versionTag.firstMatch(tag);
+  if (match == null) return null;
+  final latest = match.group(1)!;
+  if (compareVersions(latest, currentVersion) <= 0) return null;
+  return AppUpdate(
+    version: latest,
+    date: _formatDate(_string(json['published_at'])),
+    changelog: _trimChangelog(_string(json['body'])),
+    downloadUrl: _downloadUrl(json),
+  );
+}
+
+/// Compares dotted version numbers such as `1.10.0`. Returns a negative
+/// number, zero or a positive number when [a] is older, equal or newer than [b].
+int compareVersions(String a, String b) {
   final pa = a.split('.').map((s) => int.tryParse(s) ?? 0).toList();
   final pb = b.split('.').map((s) => int.tryParse(s) ?? 0).toList();
   final len = pa.length > pb.length ? pa.length : pb.length;
@@ -69,6 +95,41 @@ int _compareVersions(String a, String b) {
     if (va != vb) return va.compareTo(vb);
   }
   return 0;
+}
+
+String? _string(Object? value) => value is String ? value : null;
+
+String _formatDate(String? iso) {
+  final parsed = DateTime.tryParse(iso ?? '');
+  if (parsed == null) return '';
+  final local = parsed.toLocal();
+  final day = local.day.toString().padLeft(2, '0');
+  final month = local.month.toString().padLeft(2, '0');
+  return '$day/$month/${local.year}';
+}
+
+String _trimChangelog(String? body) {
+  final text = (body ?? '').trim();
+  if (text.length <= _maxChangelogChars) return text;
+  return '${text.substring(0, _maxChangelogChars).trimRight()}…';
+}
+
+/// Prefers the arm64 APK, then any other APK, and falls back to the release
+/// page when the release has no APK attached.
+String _downloadUrl(Map<String, dynamic> json) {
+  String? firstApk;
+  final assets = json['assets'];
+  if (assets is List) {
+    for (final asset in assets) {
+      if (asset is! Map<String, dynamic>) continue;
+      final name = (_string(asset['name']) ?? '').toLowerCase();
+      final url = _string(asset['browser_download_url']) ?? '';
+      if (!name.endsWith('.apk') || url.isEmpty) continue;
+      if (name.contains('arm64')) return url;
+      firstApk ??= url;
+    }
+  }
+  return firstApk ?? _string(json['html_url']) ?? '';
 }
 
 Future<void> showUpdateDialog(

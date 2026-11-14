@@ -19,6 +19,16 @@ BCMusic là app Flutter cài bằng APK cho Android 8.0 (API 26) trở lên. Gia
 
 Dùng những bài bạn có quyền lưu. Tải phụ thuộc vào nguồn còn truy cập được. App hỗ trợ các luồng âm thanh công khai tương thích. Các bài yêu cầu DRM, trả phí hoặc đăng nhập riêng có thể không khả dụng. Tải và playlist nằm trong bộ nhớ riêng của ứng dụng. Cài bản cập nhật có cùng chữ ký để giữ dữ liệu.
 
+## Cập nhật ứng dụng
+
+App kiểm tra GitHub Release mới nhất của repo mỗi lần mở. Khi phát hành bản mới:
+
+1. Đổi `version` trong `pubspec.yaml` và `BCMusicConfig.appVersion` trong `lib/app_config.dart` cho cùng một phiên bản.
+2. Build APK theo phần [Build trên Windows](#build-trên-windows) bên dưới.
+3. Tạo GitHub Release với tag `vX.Y.Z` khớp phiên bản và đính kèm file `.apk`. Nếu có nhiều APK, app ưu tiên file có `arm64` trong tên.
+
+Các bản cài trước 1.3.1 gọi một endpoint không còn tồn tại nên không nhận được thông báo. Cần cài thủ công bản 1.3.1 một lần.
+
 ## Build trên Windows
 
 Cần Flutter 3.47.1, JDK 17 và Android SDK 36. Script chuẩn bị bộ công cụ dòng lệnh dưới thư mục cục bộ `.android-tools` của repo. Có thể dùng JDK và SDK hiện có qua `JAVA_HOME` và `ANDROID_HOME`.

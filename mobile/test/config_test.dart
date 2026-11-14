@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:bcmusic/app_config.dart';
 import 'package:bcmusic/discovery.dart';
@@ -42,6 +44,29 @@ void main() {
       expect(avatarUri.path, '/api/user/avatar');
       expect(avatarUri.queryParameters['userId'], '662b667210e75553e19eb45a');
       expect(avatarUri.queryParameters['v'], '2');
+    });
+  });
+
+  group('BCMusicConfig app version and update source', () {
+    test('appVersion matches the version declared in pubspec.yaml', () {
+      final pubspec = File('pubspec.yaml').readAsStringSync();
+      final match = RegExp(
+        r'^version:\s*([0-9.]+)\+',
+        multiLine: true,
+      ).firstMatch(pubspec);
+      expect(match, isNotNull);
+      expect(BCMusicConfig.appVersion, match!.group(1));
+    });
+
+    test('update check reads the latest GitHub release of the BCMusic repo', () {
+      expect(
+        BCMusicConfig.latestReleaseUri.toString(),
+        'https://api.github.com/repos/1250080247-cloud/BCMusic/releases/latest',
+      );
+      expect(
+        BCMusicConfig.userAgent,
+        'BCMusic/${BCMusicConfig.appVersion} (Android)',
+      );
     });
   });
 }
