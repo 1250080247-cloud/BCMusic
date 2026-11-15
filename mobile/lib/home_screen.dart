@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import 'app_controller.dart';
 import 'app_theme.dart';
+import 'library_sort.dart';
 import 'models.dart';
 import 'track_widgets.dart';
 
@@ -26,6 +27,7 @@ enum _LibraryFilter { all, downloaded, listened, pending }
 
 class _HomeScreenState extends State<HomeScreen> {
   _LibraryFilter _filter = _LibraryFilter.all;
+  LibrarySort _sort = LibrarySort.recent;
   String _search = '';
   MusicController get controller => widget.controller;
 
@@ -78,7 +80,7 @@ class _HomeScreenState extends State<HomeScreen> {
           tracks.fold<int>(0, (total, track) => total + track.bytes) /
           (1024 * 1024);
       final showingHistory = _filter == _LibraryFilter.listened;
-      final visible =
+      final filtered =
           (showingHistory ? controller.snapshot.listeningHistory : tracks)
               .where(
                 (track) => '${track.title} ${track.artist}'
@@ -93,6 +95,9 @@ class _HomeScreenState extends State<HomeScreen> {
                 },
               )
               .toList();
+      final visible = showingHistory
+          ? filtered
+          : sortLibraryTracks(filtered, _sort);
 
       return CustomScrollView(
         slivers: [
@@ -332,6 +337,24 @@ class _HomeScreenState extends State<HomeScreen> {
                           selected: _filter == filter,
                           onSelected: (_) => setState(() => _filter = filter),
                         ),
+                      if (!showingHistory &&
+                          tracks.any((track) => track.isReady))
+                        ActionChip(
+                          avatar: const Icon(Icons.shuffle_rounded, size: 16),
+                          label: const Text('Phát ngẫu nhiên'),
+                          onPressed: () {
+                            final playable = tracks
+                                .where((track) => track.isReady)
+                                .toList()
+                              ..shuffle();
+                            controller.play(
+                              playable.first,
+                              queueIds: [
+                                for (final track in playable) track.id,
+                              ],
+                            );
+                          },
+                        ),
                       if (widget.onPlaylist case final onPlaylist?)
                         ActionChip(
                           label: const Text('Playlist'),
@@ -342,13 +365,34 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 const SizedBox(height: 14),
                 if (tracks.isNotEmpty || showingHistory) ...[
-                  TextField(
-                    onChanged: (text) =>
-                        setState(() => _search = text.toLowerCase().trim()),
-                    decoration: const InputDecoration(
-                      hintText: 'Tìm trong thư viện…',
-                      prefixIcon: Icon(Icons.search_rounded),
-                    ),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          onChanged: (text) => setState(
+                            () => _search = text.toLowerCase().trim(),
+                          ),
+                          decoration: const InputDecoration(
+                            hintText: 'Tìm trong thư viện…',
+                            prefixIcon: Icon(Icons.search_rounded),
+                          ),
+                        ),
+                      ),
+                      if (!showingHistory)
+                        PopupMenuButton<LibrarySort>(
+                          tooltip: 'Sắp xếp',
+                          icon: const Icon(Icons.sort_rounded),
+                          initialValue: _sort,
+                          onSelected: (sort) => setState(() => _sort = sort),
+                          itemBuilder: (context) => [
+                            for (final sort in LibrarySort.values)
+                              PopupMenuItem<LibrarySort>(
+                                value: sort,
+                                child: Text(sort.label),
+                              ),
+                          ],
+                        ),
+                    ],
                   ),
                   const SizedBox(height: 14),
                 ],

@@ -198,6 +198,15 @@ class AndroidMusicPlatform implements MusicPlatform {
     'url': url,
     'enqueueIfMissing': enqueueIfMissing,
   });
+  /// Creates an empty playlist and returns it, with the id needed to add tracks.
+  Future<LocalPlaylist> createNamedPlaylist(String name) async =>
+      LocalPlaylist.fromMap(
+        (await _methods.invokeMapMethod<Object?, Object?>('createPlaylist', {
+              'name': name,
+            })) ??
+            {},
+      );
+
   @override
   Future<void> deletePlaylist(String playlistId) =>
       _methods.invokeMethod('deletePlaylist', {'playlistId': playlistId});

@@ -10,6 +10,7 @@ BCMusic là app Flutter cài bằng APK cho Android 8.0 (API 26) trở lên. Gia
 2. Mở thông tin bài và chọn **Tải để nghe offline** khi có mạng. Chờ trạng thái **Đã tải**.
 3. Mở **Thư viện** để phát bản đã tải, kể cả khi mất mạng. Android hiển thị điều khiển phát ở khu vực thông báo và màn hình khóa.
 4. Tạo playlist trong tab **Playlist** và thêm các bài đã tải. Playlist lưu trên điện thoại. Playlist web truy cập qua mục **Mở web BCMusic**.
+5. Playlist chỉ lưu trên máy. Để chuyển sang máy khác, vào **Cài đặt › Dữ liệu › Sao lưu & khôi phục playlist**: sao chép bản sao lưu, rồi dán vào máy mới. Mục **Dung lượng & bản tải** cho biết bài nào đang chiếm bộ nhớ, cho phép xóa bản không cần và thử lại bản lỗi.
 
 ## Tài khoản và cài đặt
 

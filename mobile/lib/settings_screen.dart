@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'app_config.dart';
 import 'app_controller.dart';
 import 'app_theme.dart';
+import 'backup_screen.dart';
+import 'downloads_screen.dart';
 import 'models.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -339,6 +341,54 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 value: prefs.light,
                 onChanged: (value) =>
                     widget.controller.updatePreferences({'light': value}),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'DỮ LIỆU',
+                style: TextStyle(
+                  fontSize: 9.5,
+                  letterSpacing: 1.8,
+                  color: Color(0xff8f84a9),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.backup_outlined),
+                title: const Text(
+                  'Sao lưu & khôi phục playlist',
+                  style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600),
+                ),
+                subtitle: const Text(
+                  'Playlist chỉ lưu trên máy này. Sao lưu để chuyển sang máy khác.',
+                  style: TextStyle(fontSize: 11.5, color: Color(0xff7f728f)),
+                ),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) =>
+                        PlaylistBackupScreen(controller: widget.controller),
+                  ),
+                ),
+              ),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.storage_rounded),
+                title: const Text(
+                  'Dung lượng & bản tải',
+                  style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600),
+                ),
+                subtitle: const Text(
+                  'Xem bài đã tải, xóa bản không cần và thử lại bản lỗi.',
+                  style: TextStyle(fontSize: 11.5, color: Color(0xff7f728f)),
+                ),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) =>
+                        DownloadsScreen(controller: widget.controller),
+                  ),
+                ),
               ),
               const SizedBox(height: 16),
               Row(

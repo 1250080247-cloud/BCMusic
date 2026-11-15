@@ -513,6 +513,27 @@ class MusicController extends ChangeNotifier {
     );
   }
 
+  /// Creates an empty playlist for a restored backup. Returns its id, or null
+  /// when this platform cannot create playlists or the call fails.
+  Future<String?> createEmptyPlaylist(String name) async {
+    final android = platform;
+    if (android is! AndroidMusicPlatform) return null;
+    try {
+      return (await android.createNamedPlaylist(name)).id;
+    } on Exception {
+      return null;
+    }
+  }
+
+  /// Adds a track, given by its source link, to [playlistId]. The app downloads
+  /// the track when it is not on the device yet.
+  Future<void> addSourceToPlaylist(String playlistId, String sourceUrl) =>
+      platform.enqueueAndAddToPlaylist(
+        playlistId,
+        deriveTrackId(sourceUrl),
+        url: sourceUrl,
+      );
+
   Future<void> playAccountPlaylist(
     AccountPlaylist playlist, {
     bool shuffle = false,
