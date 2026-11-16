@@ -24,6 +24,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     builder: (context, _) {
       final prefs = widget.controller.snapshot.preferences;
       final volume = _volume ?? prefs.volume.toDouble();
+      final palette = context.palette;
+      final separator = BoxDecoration(
+        border: Border(bottom: BorderSide(color: palette.border)),
+      );
 
       const qualityOptions = [
         ('economy', 'Tiết kiệm', '~64 kbps'),
@@ -39,7 +43,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             children: [
               Row(
                 children: [
-                  const Expanded(
+                  Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -49,11 +53,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             fontSize: 9.5,
                             letterSpacing: 1.8,
                             fontWeight: FontWeight.w600,
-                            color: Color(0xffac92c1),
+                            color: palette.pink,
                           ),
                         ),
-                        SizedBox(height: 6),
-                        Text(
+                        const SizedBox(height: 6),
+                        const Text(
                           'Cài đặt trải nghiệm',
                           style: TextStyle(
                             fontSize: 22,
@@ -81,21 +85,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
               // 1. Âm lượng (.setting-block)
               Container(
                 padding: const EdgeInsets.symmetric(vertical: 16),
-                decoration: const BoxDecoration(
-                  border: Border(bottom: BorderSide(color: Color(0x14ffffff))),
-                ),
+                decoration: separator,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text(
+                        Text(
                           'Âm lượng',
                           style: TextStyle(
                             fontSize: 13.5,
                             fontWeight: FontWeight.w600,
-                            color: Color(0xffd1c7de),
+                            color: palette.text,
                           ),
                         ),
                         Container(
@@ -104,16 +106,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             vertical: 3,
                           ),
                           decoration: BoxDecoration(
-                            color: const Color(0x1ac2a3e0),
+                            color: palette.selection,
                             borderRadius: BorderRadius.circular(6),
-                            border: Border.all(color: const Color(0x33bfa0d9)),
+                            border: Border.all(color: palette.border),
                           ),
                           child: Text(
                             '${volume.round()}%',
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.w700,
-                              color: Color(0xffceb7e4),
+                              color: palette.text,
                             ),
                           ),
                         ),
@@ -122,17 +124,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     const SizedBox(height: 10),
                     Row(
                       children: [
-                        const Icon(
+                        Icon(
                           Icons.volume_up_rounded,
                           size: 20,
-                          color: Color(0xffa89bb8),
+                          color: palette.muted,
                         ),
                         Expanded(
                           child: Slider(
                             value: volume,
                             max: 100,
-                            activeColor: const Color(0xffb7a8d4),
-                            inactiveColor: const Color(0x22ffffff),
+                            activeColor: palette.action,
+                            inactiveColor: palette.border,
                             onChanged: (v) => setState(() => _volume = v),
                             onChangeEnd: (v) async {
                               await widget.controller.updatePreferences({
@@ -151,18 +153,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
               // 2. Tốc độ phát (.setting-chips)
               Container(
                 padding: const EdgeInsets.symmetric(vertical: 18),
-                decoration: const BoxDecoration(
-                  border: Border(bottom: BorderSide(color: Color(0x14ffffff))),
-                ),
+                decoration: separator,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
+                    Text(
                       'Tốc độ phát',
                       style: TextStyle(
                         fontSize: 13.5,
                         fontWeight: FontWeight.w600,
-                        color: Color(0xffd1c7de),
+                        color: palette.text,
                       ),
                     ),
                     const SizedBox(height: 12),
@@ -176,6 +176,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               child: ChoiceChip(
                                 showCheckmark: false,
                                 label: Text(playbackSpeedLabel(speed)),
+                                backgroundColor: palette.raised,
+                                selectedColor: palette.selection,
+                                labelStyle: TextStyle(color: palette.text),
                                 selected: prefs.speed == speed,
                                 onSelected: (_) => widget.controller
                                     .updatePreferences({'speed': speed}),
@@ -191,21 +194,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
               // 3. Chuyển bài mượt mà 5s (Crossfade)
               Container(
                 padding: const EdgeInsets.symmetric(vertical: 16),
-                decoration: const BoxDecoration(
-                  border: Border(bottom: BorderSide(color: Color(0x14ffffff))),
-                ),
+                decoration: separator,
                 child: Row(
                   children: [
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text(
+                          Text(
                             'Chuyển bài mượt mà 5s',
                             style: TextStyle(
                               fontSize: 13.5,
                               fontWeight: FontWeight.w600,
-                              color: Color(0xffd1c7de),
+                              color: palette.text,
                             ),
                           ),
                           const SizedBox(height: 4),
@@ -213,9 +214,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             prefs.crossfade
                                 ? 'Giảm âm cuối bài, tăng âm đầu bài'
                                 : 'Làm dịu khoảng chuyển giữa hai bài',
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 11.5,
-                              color: Color(0xff7f728f),
+                              color: palette.muted,
                             ),
                           ),
                         ],
@@ -223,8 +224,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                     Switch(
                       value: prefs.crossfade,
-                      activeThumbColor: const Color(0xfffaf4ff),
-                      activeTrackColor: const Color(0xffb5a0cf),
+                      activeThumbColor: palette.onAction,
+                      activeTrackColor: palette.action,
                       onChanged: (value) => widget.controller.updatePreferences(
                         {'crossfade': value},
                       ),
@@ -236,24 +237,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
               // 4. Chất lượng tải xuống (.quality-chips)
               Container(
                 padding: const EdgeInsets.symmetric(vertical: 18),
-                decoration: const BoxDecoration(
-                  border: Border(bottom: BorderSide(color: Color(0x14ffffff))),
-                ),
+                decoration: separator,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
+                    Text(
                       'Chất lượng tải xuống',
                       style: TextStyle(
                         fontSize: 13.5,
                         fontWeight: FontWeight.w600,
-                        color: Color(0xffd1c7de),
+                        color: palette.text,
                       ),
                     ),
                     const SizedBox(height: 4),
-                    const Text(
+                    Text(
                       'Áp dụng cho các bài hát tải về nghe offline.',
-                      style: TextStyle(fontSize: 11.5, color: Color(0xff7f728f)),
+                      style: TextStyle(fontSize: 11.5, color: palette.muted),
                     ),
                     const SizedBox(height: 12),
                     SingleChildScrollView(
@@ -276,12 +275,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                   decoration: BoxDecoration(
                                     borderRadius: BorderRadius.circular(12),
                                     color: prefs.downloadQuality == q.$1
-                                        ? const Color(0x38a58bb3)
-                                        : const Color(0xa1191c27),
+                                        ? palette.selection
+                                        : palette.raised,
                                     border: Border.all(
                                       color: prefs.downloadQuality == q.$1
-                                          ? const Color(0x88b5a0d9)
-                                          : context.palette.border,
+                                          ? palette.pink
+                                          : palette.border,
                                     ),
                                   ),
                                   child: Column(
@@ -292,17 +291,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                         style: TextStyle(
                                           fontSize: 11.5,
                                           fontWeight: FontWeight.w700,
-                                          color: prefs.downloadQuality == q.$1
-                                              ? const Color(0xffddd3f1)
-                                              : const Color(0xff959aac),
+                                          color: palette.text,
                                         ),
                                       ),
                                       const SizedBox(height: 4),
                                       Text(
                                         q.$3,
-                                        style: const TextStyle(
+                                        style: TextStyle(
                                           fontSize: 10,
-                                          color: Color(0xff9d8eac),
+                                          color: palette.muted,
                                         ),
                                       ),
                                     ],
@@ -324,9 +321,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   'Hiệu ứng sóng nhạc',
                   style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600),
                 ),
-                subtitle: const Text(
-                  'Hiển thị chuyển động sóng âm trên trang khám phá',
-                  style: TextStyle(fontSize: 11.5, color: Color(0xff7f728f)),
+                subtitle: Text(
+                  'Hiển thị đĩa xoay và sóng nhạc trên Trang chủ',
+                  style: TextStyle(fontSize: 11.5, color: palette.muted),
                 ),
                 value: prefs.motion,
                 onChanged: (value) =>
@@ -399,11 +396,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w800,
-                      color: Color(0xff9c92b1),
+                      color: palette.muted,
                       letterSpacing: -0.6,
                     ),
                   ),
-                  SizedBox(width: 8),
+                  const SizedBox(width: 8),
                   Flexible(
                     child: Text(
                       'VERSION ${BCMusicConfig.appVersion} · LIQUID GLASS',
@@ -412,7 +409,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       style: TextStyle(
                         fontSize: 9.5,
                         letterSpacing: 1.0,
-                        color: Color(0xff766785),
+                        color: palette.muted,
                       ),
                     ),
                   ),

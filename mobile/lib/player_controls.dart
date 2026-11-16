@@ -1,9 +1,7 @@
 import 'dart:async';
-import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui' show ImageFilter;
 
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -11,6 +9,7 @@ import 'app_controller.dart';
 import 'app_theme.dart';
 import 'lyrics.dart';
 import 'models.dart';
+import 'platform_io.dart';
 import 'track_actions.dart';
 import 'track_widgets.dart';
 
@@ -28,15 +27,10 @@ class PlayerControls extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final playback = controller.playback;
-    final track =
-        playback.track ??
-        controller.tracks
-            .where((item) => item.id == playback.trackId)
-            .firstOrNull;
-    final queue = controller.sourceQueueItems;
-    final queueIdx = controller.sourceQueueIndex;
-    final sourceItem =
-        queueIdx != null && queueIdx < queue.length ? queue[queueIdx] : null;
+    final palette = context.palette;
+    final light = Theme.of(context).brightness == Brightness.light;
+    final track = controller.currentTrack;
+    final sourceItem = controller.currentSourceItem;
     final fraction = playback.durationMs > 0
         ? (playback.positionMs / playback.durationMs).clamp(0.02, 1.0)
         : 0.05;
@@ -44,7 +38,7 @@ class PlayerControls extends StatelessWidget {
     return LiquidGlassCard(
       borderRadius: 17,
       blur: 28,
-      gradient: const LinearGradient(
+      gradient: light ? palette.surfaceGradient : const LinearGradient(
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
         colors: [
@@ -53,7 +47,7 @@ class PlayerControls extends StatelessWidget {
           Color(0xdc2b2639),
         ],
       ),
-      borderColor: const Color(0x36c2b4dd),
+      borderColor: light ? palette.border : const Color(0x36c2b4dd),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -113,9 +107,10 @@ class PlayerControls extends StatelessWidget {
                                     'Đang phát',
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 13,
                                   fontWeight: FontWeight.w700,
+                                  color: palette.text,
                                 ),
                               ),
                               const SizedBox(height: 3),
@@ -127,8 +122,8 @@ class PlayerControls extends StatelessWidget {
                                 style: TextStyle(
                                   fontSize: 11,
                                   color: playback.error == null
-                                      ? const Color(0xffa396b2)
-                                      : Colors.redAccent,
+                                      ? (light ? palette.muted : const Color(0xffa396b2))
+                                      : Theme.of(context).colorScheme.error,
                                 ),
                               ),
                             ],
@@ -146,7 +141,7 @@ class PlayerControls extends StatelessWidget {
                         ? Icons.pause_rounded
                         : Icons.play_arrow_rounded,
                     size: 26,
-                    color: const Color(0xfff7edf9),
+                    color: light ? palette.action : const Color(0xfff7edf9),
                   ),
                 ),
                 IconButton(
@@ -154,10 +149,10 @@ class PlayerControls extends StatelessWidget {
                   onPressed: controller.canSkip(1)
                       ? () => controller.skip(1)
                       : null,
+                  color: light ? palette.action : const Color(0xffb9a8cb),
                   icon: const Icon(
                     Icons.skip_next_rounded,
                     size: 24,
-                    color: Color(0xffb9a8cb),
                   ),
                 ),
               ],
@@ -255,15 +250,11 @@ class _NowPlayingState extends State<_NowPlaying> {
   }
 
   Widget _buildPlayerBackground(String? path, String? url) {
-    Widget? image;
-    if (!kIsWeb && path != null && path.isNotEmpty) {
-      image = Image.file(
-        File(path),
-        fit: BoxFit.cover,
-        alignment: Alignment.center,
-        errorBuilder: (_, _, _) => const SizedBox.shrink(),
-      );
-    } else if (url != null && url.isNotEmpty) {
+    Widget? image = localArtwork(
+      path,
+      errorBuilder: (_, _, _) => const SizedBox.shrink(),
+    );
+    if (image == null && url != null && url.isNotEmpty) {
       final uri = Uri.tryParse(url);
       final hasArtworkUrl =
           uri != null &&

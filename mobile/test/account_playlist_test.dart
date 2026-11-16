@@ -11,6 +11,7 @@ import 'package:flutter_test/flutter_test.dart';
 class AccountPlaylistTestPlatform implements MusicPlatform {
   final updates = StreamController<LibrarySnapshot>.broadcast(sync: true);
   final playedSources = <String>[];
+  final deletions = <(String, bool)>[];
   LibrarySnapshot state = const LibrarySnapshot();
 
   @override
@@ -39,7 +40,9 @@ class AccountPlaylistTestPlatform implements MusicPlatform {
     bool enqueueIfMissing = false,
   }) async {}
   @override
-  Future<void> deletePlaylist(String playlistId) async {}
+  Future<void> deletePlaylist(String playlistId, {bool removeDownloads = false}) async {
+    deletions.add((playlistId, removeDownloads));
+  }
   @override
   Future<void> addToPlaylist(String playlistId, String id) async {}
   @override
@@ -97,6 +100,40 @@ class AccountPlaylistTestPlatform implements MusicPlatform {
 }
 
 void main() {
+  testWidgets('offline deletion offers keeping or removing downloads', (tester) async {
+    final platform = AccountPlaylistTestPlatform()
+      ..state = const LibrarySnapshot(
+        playlists: [LocalPlaylist(id: 'p1', name: 'Playlist thử')],
+      );
+    final controller = MusicController(platform);
+    await controller.initialize();
+    await tester.pumpWidget(MaterialApp(
+      home: PlaylistDetail(controller: controller, playlistId: 'p1'),
+    ));
+
+    await tester.tap(find.byTooltip('Xóa playlist'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Hủy'));
+    await tester.pumpAndSettle();
+    expect(platform.deletions, isEmpty);
+
+    await tester.tap(find.byTooltip('Xóa playlist'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Giữ nhạc đã tải'));
+    await tester.pumpAndSettle();
+    expect(platform.deletions, [('p1', false)]);
+
+    await tester.tap(find.byTooltip('Xóa playlist'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Xóa cả nhạc đã tải'));
+    await tester.pumpAndSettle();
+    expect(platform.deletions, [('p1', false), ('p1', true)]);
+
+    await tester.pumpWidget(const SizedBox());
+    controller.dispose();
+    await platform.updates.close();
+  });
+
   testWidgets('AccountPlaylistDetail renders header, Play All and Shuffle buttons', (tester) async {
     final platform = AccountPlaylistTestPlatform();
     final controller = MusicController(platform);

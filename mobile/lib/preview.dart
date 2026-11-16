@@ -338,6 +338,18 @@ class _PreviewPlatform extends AndroidMusicPlatform {
   }
 
   @override
+  Future<void> deletePlaylist(String playlistId, {bool removeDownloads = false}) async {
+    final playlist = _playlists.remove(playlistId);
+    if (removeDownloads && playlist != null) {
+      final shared = _playlists.values.expand((item) => item.trackIds).toSet();
+      for (final id in playlist.trackIds.where((id) => !shared.contains(id))) {
+        if (_downloads[id]?.isReady == true) _downloads.remove(id);
+      }
+    }
+    _updates.add(_state);
+  }
+
+  @override
   Future<void> enqueueAndAddToPlaylist(
     String playlistId,
     String id, {

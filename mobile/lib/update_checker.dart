@@ -1,10 +1,8 @@
-import 'dart:convert';
-import 'dart:io';
-
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
 import 'app_config.dart';
+import 'platform_io.dart';
 
 const _maxResponseBytes = 256 * 1024;
 const _maxChangelogChars = 600;
@@ -27,38 +25,26 @@ Future<AppUpdate?> checkForUpdate({
   Uri? uri,
   String currentVersion = BCMusicConfig.appVersion,
 }) async {
-  // dart:io HttpClient is not available on the web platform.
   if (kIsWeb) return null;
 
-  final client = HttpClient()..connectionTimeout = const Duration(seconds: 10);
+  final client = JsonClient(const Duration(seconds: 10));
   try {
-    final request = await client
-        .getUrl(uri ?? BCMusicConfig.latestReleaseUri)
-        .timeout(const Duration(seconds: 10));
-    // GitHub's API rejects requests that carry no User-Agent header.
-    request.headers
-      ..set(HttpHeaders.acceptHeader, 'application/vnd.github+json')
-      ..set(HttpHeaders.userAgentHeader, BCMusicConfig.userAgent)
-      ..set('X-GitHub-Api-Version', '2022-11-28');
-    final response = await request.close().timeout(
-      const Duration(seconds: 15),
+    final json = await client.get(
+      uri ?? BCMusicConfig.latestReleaseUri,
+      responseTimeout: const Duration(seconds: 15),
+      bodyTimeout: const Duration(seconds: 10),
+      maxBytes: _maxResponseBytes,
+      headers: const {
+        'accept': 'application/vnd.github+json',
+        'user-agent': BCMusicConfig.userAgent,
+        'X-GitHub-Api-Version': '2022-11-28',
+      },
     );
-    if (response.statusCode != 200) {
-      request.abort();
-      return null;
-    }
-    final bytes = <int>[];
-    await for (final chunk in response.timeout(const Duration(seconds: 10))) {
-      if (bytes.length + chunk.length > _maxResponseBytes) break;
-      bytes.addAll(chunk);
-    }
-    final json = jsonDecode(utf8.decode(bytes));
-    if (json is! Map<String, dynamic>) return null;
-    return parseLatestRelease(json, currentVersion: currentVersion);
+    return json == null ? null : parseLatestRelease(json, currentVersion: currentVersion);
   } catch (_) {
     return null;
   } finally {
-    client.close(force: true);
+    client.close();
   }
 }
 
@@ -123,13 +109,21 @@ String _downloadUrl(Map<String, dynamic> json) {
     for (final asset in assets) {
       if (asset is! Map<String, dynamic>) continue;
       final name = (_string(asset['name']) ?? '').toLowerCase();
-      final url = _string(asset['browser_download_url']) ?? '';
+      final url = _httpsUrl(asset['browser_download_url']);
       if (!name.endsWith('.apk') || url.isEmpty) continue;
       if (name.contains('arm64')) return url;
       firstApk ??= url;
     }
   }
-  return firstApk ?? _string(json['html_url']) ?? '';
+  return firstApk ?? _httpsUrl(json['html_url']);
+}
+
+String _httpsUrl(Object? value) {
+  final uri = Uri.tryParse(_string(value) ?? '');
+  if (uri == null || uri.scheme != 'https' || uri.host.isEmpty || uri.userInfo.isNotEmpty) {
+    return '';
+  }
+  return uri.toString();
 }
 
 Future<void> showUpdateDialog(

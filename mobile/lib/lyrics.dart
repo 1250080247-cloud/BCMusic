@@ -1,9 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 
 import 'app_config.dart';
 import 'platform_bridge.dart';
+import 'platform_io.dart';
 
 class LyricLine {
   const LyricLine({required this.timeMs, required this.text});
@@ -129,10 +129,9 @@ int activeLyricIndex(List<LyricLine> lines, int positionMs) {
 }
 
 class LyricsRepository {
-  LyricsRepository({HttpClient? client, this.platform})
-      : _client = client ?? (HttpClient()..connectionTimeout = const Duration(seconds: 10));
+  LyricsRepository({this.platform});
 
-  final HttpClient _client;
+  final _client = JsonClient(const Duration(seconds: 10));
   final MusicPlatform? platform;
   final Map<String, LyricsData> _memoryCache = {};
 
@@ -179,12 +178,12 @@ class LyricsRepository {
         'artist': artist,
         if (durationSeconds > 0) 'duration': durationSeconds.toString(),
       });
-      final req = await _client.getUrl(uri).timeout(const Duration(seconds: 8));
-      req.headers.set(HttpHeaders.acceptHeader, 'application/json');
-      final res = await req.close().timeout(const Duration(seconds: 8));
-      if (res.statusCode == 200) {
-        final body = await res.transform(utf8.decoder).join();
-        final json = jsonDecode(body) as Map<String, dynamic>;
+      final json = await _client.get(
+        uri,
+        responseTimeout: const Duration(seconds: 8),
+        maxBytes: 1024 * 1024,
+      );
+      if (json != null) {
         final status = json['status'] as String? ?? 'unavailable';
         if (status != 'unavailable') {
           final lines = ((json['lines'] as List?) ?? [])
@@ -214,13 +213,13 @@ class LyricsRepository {
           'artist_name': artist,
           if (durationSeconds > 0) 'duration': durationSeconds.toString(),
         });
-        final req = await _client.getUrl(uri).timeout(const Duration(seconds: 6));
-        req.headers.set('Lrclib-Client', BCMusicConfig.userAgent);
-        req.headers.set(HttpHeaders.acceptHeader, 'application/json');
-        final res = await req.close().timeout(const Duration(seconds: 6));
-        if (res.statusCode == 200) {
-          final body = await res.transform(utf8.decoder).join();
-          final json = jsonDecode(body) as Map<String, dynamic>;
+        final json = await _client.get(
+          uri,
+          responseTimeout: const Duration(seconds: 6),
+          maxBytes: 1024 * 1024,
+          headers: const {'Lrclib-Client': BCMusicConfig.userAgent},
+        );
+        if (json != null) {
           if (json['instrumental'] == true) {
             result = const LyricsData(status: 'instrumental', source: 'LRCLIB');
           } else {
@@ -250,7 +249,7 @@ class LyricsRepository {
   }
 
   void dispose() {
-    _client.close(force: true);
+    _client.close();
   }
 }
 
@@ -260,19 +259,15 @@ class LyricsStore {
   static Future<void> save(String trackId, LyricsData data) async {
     _fileStore[trackId] = data;
     try {
-      final file = await _cacheFile(trackId);
-      if (file != null) {
-        await file.writeAsString(jsonEncode(data.toMap()), flush: true);
-      }
+      await writeLyricsFile(trackId, jsonEncode(data.toMap()));
     } catch (_) {}
   }
 
   static Future<LyricsData?> load(String trackId) async {
     if (_fileStore.containsKey(trackId)) return _fileStore[trackId];
     try {
-      final file = await _cacheFile(trackId);
-      if (file != null && await file.exists()) {
-        final text = await file.readAsString();
+      final text = await readLyricsFile(trackId);
+      if (text != null) {
         final map = jsonDecode(text) as Map<String, dynamic>;
         final data = LyricsData.fromMap(map);
         _fileStore[trackId] = data;
@@ -280,16 +275,5 @@ class LyricsStore {
       }
     } catch (_) {}
     return null;
-  }
-
-  static Future<File?> _cacheFile(String trackId) async {
-    try {
-      final key = trackId.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
-      final dir = Directory('${Directory.systemTemp.path}/bcmusic_lyrics');
-      if (!await dir.exists()) await dir.create(recursive: true);
-      return File('${dir.path}/$key.json');
-    } catch (_) {
-      return null;
-    }
   }
 }

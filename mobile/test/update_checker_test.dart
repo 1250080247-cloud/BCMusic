@@ -51,6 +51,15 @@ void main() {
   });
 
   group('parseLatestRelease', () {
+    test('uses the HTTPS release page when the APK link is unsafe', () {
+      final json = _release(assets: [
+        {'name': 'bcmusic-arm64.apk', 'browser_download_url': 'http://example.org/app.apk'},
+        {'name': 'bcmusic.apk', 'browser_download_url': 'https://user@example.org/app.apk'},
+      ]);
+      final update = parseLatestRelease(json, currentVersion: '1.3.0');
+      expect(update?.downloadUrl, json['html_url']);
+    });
+
     test('reads the payload GitHub returns for the real v1.3.0 release', () {
       final json = jsonDecode(_githubReleaseV130) as Map<String, dynamic>;
 

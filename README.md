@@ -69,8 +69,12 @@ MONGODB_DNS_SERVERS=<tùy chọn, ví dụ: 8.8.8.8,1.1.1.1>
 | `YOUTUBE_API_KEY` | Có cho tìm kiếm | Thiếu key thì tìm kiếm, khám phá và gợi ý báo lỗi tạm thời. |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Không | Chỉ cần khi bật đăng nhập Google. |
 | `MONGODB_DNS_SERVERS` | Không | DNS thay thế cho chuỗi `mongodb+srv://` trên một số máy Windows. |
+| `BCMUSIC_ANDROID_VERSION`, `BCMUSIC_ANDROID_DOWNLOAD_URL` | Có để báo cập nhật APK | Phiên bản đã phát hành dạng `1.3.0` và URL tải HTTPS. |
+| `BCMUSIC_ANDROID_RELEASE_DATE`, `BCMUSIC_ANDROID_CHANGELOG` | Không | Ngày phát hành và ghi chú hiển thị trong hộp thoại cập nhật Android. |
 
 Không commit `.env.local`. File này đã nằm trong `.gitignore`.
+
+Rate limit theo IP trên Vercel dùng header do nền tảng cấp. Bật **Automatically expose System Environment Variables** để có biến `VERCEL`. Ngoài Vercel, rate limit dùng hạn mức chung vì ứng dụng không xác thực được nguồn header IP.
 
 ## Chạy
 

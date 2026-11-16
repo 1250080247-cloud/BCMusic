@@ -1,10 +1,10 @@
 import 'dart:async';
-import 'dart:convert';
-import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 
 import 'app_config.dart';
+import 'platform_io.dart';
 
 class DiscoverySong {
   const DiscoverySong({
@@ -104,7 +104,7 @@ class WebsiteDiscoveryRepository
   static const defaultWebsiteHost = BCMusicConfig.defaultWebsiteHost;
 
   final String host;
-  final _client = HttpClient()..connectionTimeout = const Duration(seconds: 15);
+  final _client = JsonClient(const Duration(seconds: 15));
   final _cache = <String, (DateTime, List<DiscoverySong>)>{};
   final _pending = <String, Future<List<DiscoverySong>>>{};
 
@@ -162,39 +162,26 @@ class WebsiteDiscoveryRepository
   }
 
   Future<Map<String, dynamic>> _request(Uri uri) async {
-    HttpClientRequest? request;
     try {
-      request = await _client.getUrl(uri).timeout(const Duration(seconds: 15));
-      request.followRedirects = false;
-      request.headers.set(HttpHeaders.acceptHeader, 'application/json');
-      final response = await request.close().timeout(
-        const Duration(seconds: 35),
+      final json = await _client.get(
+        uri,
+        responseTimeout: const Duration(seconds: 35),
+        bodyTimeout: const Duration(seconds: 20),
+        maxBytes: 2 * 1024 * 1024,
       );
-      if (response.statusCode != 200) {
-        request.abort();
-        throw const DiscoveryFailure(
-          'Nguồn khám phá đang bận. Hãy thử lại sau.',
-        );
+      if (json == null) {
+        throw const DiscoveryFailure('Nguồn khám phá đang bận. Hãy thử lại sau.');
       }
-      final bytes = <int>[];
-      await for (final chunk in response.timeout(const Duration(seconds: 20))) {
-        if (bytes.length + chunk.length > 2 * 1024 * 1024) {
-          request.abort();
-          throw const DiscoveryFailure('Dữ liệu trả về quá lớn.');
-        }
-        bytes.addAll(chunk);
-      }
-      final json = jsonDecode(utf8.decode(bytes));
-      if (json is! Map<String, dynamic>) throw const FormatException();
       return json;
     } on DiscoveryFailure {
       rethrow;
-    } on SocketException {
-      throw const DiscoveryFailure(
-        'Không có kết nối. Bạn vẫn có thể nghe các bài đã tải.',
-      );
+    } on PlatformException catch (error) {
+      throw DiscoveryFailure(switch (error.code) {
+        'offline' => 'Không có kết nối. Bạn vẫn có thể nghe các bài đã tải.',
+        'response_too_large' => 'Dữ liệu trả về quá lớn.',
+        _ => 'Không tải được danh sách nhạc. Hãy thử lại.',
+      });
     } on TimeoutException {
-      request?.abort();
       throw const DiscoveryFailure('Kết nối chậm. Hãy thử lại.');
     } catch (_) {
       throw const DiscoveryFailure(
@@ -204,7 +191,7 @@ class WebsiteDiscoveryRepository
   }
 
   @override
-  void dispose() => _client.close(force: true);
+  void dispose() => _client.close();
 }
 
 class MusicGenre {

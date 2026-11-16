@@ -516,6 +516,7 @@ Widget accountSongTile(
   PlaybackQueueItem song,
   List<PlaybackQueueItem> queue, {
   Widget? trailing,
+  bool inPlaylist = false,
 }) => Padding(
   padding: const EdgeInsets.only(bottom: 6),
   child: Material(
@@ -544,6 +545,7 @@ Widget accountSongTile(
         song.url,
         queue: queue.map((item) => item.url),
         queueItems: queue,
+        playlistArtworkUrls: inPlaylist ? queue.map((item) => item.artworkUrl) : null,
       ),
     ),
   ),
@@ -689,6 +691,7 @@ class _AccountPlaylistDetailState extends State<AccountPlaylistDetail> {
               controller,
               song,
               queue,
+              inPlaylist: true,
               trailing: TrackMenu(
                 title: song.title,
                 artist: song.artist,
@@ -1038,6 +1041,7 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
                         : () => controller.play(
                             readyTracks.first,
                             queueIds: readyTracks.map((t) => t.id).toList(),
+                            playlistId: playlist.id,
                           ),
                   );
                 }),
@@ -1217,28 +1221,32 @@ class PlaylistDetail extends StatelessWidget {
   final String playlistId;
 
   Future<void> _delete(BuildContext context, LocalPlaylist playlist) async {
-    final approved = await showDialog<bool>(
+    final removeDownloads = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xff1b1d2b),
         title: const Text('Xóa playlist?'),
         content: Text(
-          'Xóa danh sách “${playlist.name}”. Các bài đã tải vẫn có trong thư viện.',
+          'Xóa “${playlist.name}” và chọn cách xử lý các bản tải. Bài có trong playlist khác vẫn được giữ.',
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context, false),
+            onPressed: () => Navigator.pop(context),
             child: const Text('Hủy'),
           ),
           TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Giữ nhạc đã tải'),
+          ),
+          TextButton(
+            style: TextButton.styleFrom(foregroundColor: Theme.of(context).colorScheme.error),
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Xóa playlist'),
+            child: const Text('Xóa cả nhạc đã tải'),
           ),
         ],
       ),
     );
-    if (approved == true && context.mounted) {
-      await controller.deletePlaylist(playlist.id);
+    if (removeDownloads != null && context.mounted) {
+      await controller.deletePlaylist(playlist.id, removeDownloads: removeDownloads);
       if (context.mounted &&
           !controller.snapshot.playlists.any(
             (item) => item.id == playlist.id,
@@ -1373,6 +1381,7 @@ class PlaylistDetail extends StatelessWidget {
                                 : () => controller.play(
                                     tracks.first,
                                     queueIds: queue,
+                                    playlistId: playlistId,
                                   ),
                             icon: const Icon(Icons.play_arrow_rounded, size: 18),
                             label: const Text('Phát'),
@@ -1396,6 +1405,7 @@ class PlaylistDetail extends StatelessWidget {
                                       queueIds: shuffled
                                           .map((t) => t.id)
                                           .toList(),
+                                      playlistId: playlistId,
                                     );
                                   },
                             icon: const Icon(Icons.shuffle_rounded, size: 17),
@@ -1467,7 +1477,7 @@ class PlaylistDetail extends StatelessWidget {
                         ),
                       ),
                       selected: controller.playback.trackId == track.id,
-                      onTap: () => controller.play(track, queueIds: queue),
+                      onTap: () => controller.play(track, queueIds: queue, playlistId: playlistId),
                       trailing: TrackMenu(
                         title: track.title,
                         artist: track.artist,

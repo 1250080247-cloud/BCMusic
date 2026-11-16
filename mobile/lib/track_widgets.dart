@@ -1,9 +1,8 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 
 import 'app_theme.dart';
 import 'models.dart';
+import 'platform_io.dart';
 
 class TrackArtwork extends StatelessWidget {
   const TrackArtwork({super.key, this.path, this.url, this.size = 56});
@@ -45,23 +44,20 @@ class TrackArtwork extends StatelessWidget {
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(size > 80 ? 17 : 9),
-        child: path == null
-            ? (hasArtworkUrl
-                  ? Image.network(
-                      uri.toString(),
-                      width: size,
-                      height: size,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, _, _) => placeholder,
-                    )
-                  : placeholder)
-            : Image.file(
-                File(path!),
-                width: size,
-                height: size,
-                fit: BoxFit.cover,
-                errorBuilder: (_, _, _) => placeholder,
-              ),
+        child: localArtwork(
+              path,
+              size: size,
+              errorBuilder: (_, _, _) => placeholder,
+            ) ??
+            (hasArtworkUrl
+                ? Image.network(
+                    uri.toString(),
+                    width: size,
+                    height: size,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, _, _) => placeholder,
+                  )
+                : placeholder),
       ),
     );
   }

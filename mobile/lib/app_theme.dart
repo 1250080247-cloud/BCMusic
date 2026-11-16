@@ -25,6 +25,12 @@ class AppPalette {
       onAction;
   final Color selection, pink;
 
+  LinearGradient get surfaceGradient => LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [surface, raised],
+  );
+
   // Chuẩn bảng màu từ index.css (.app, .glass, .primary-button, .chip.selected)
   static const dark = AppPalette(
     background: Color(0xff0b0d14),
@@ -109,7 +115,7 @@ ThemeData bcmusicTheme({bool light = false}) {
       ),
     ),
     bottomSheetTheme: BottomSheetThemeData(
-      backgroundColor: const Color(0xff171b27),
+      backgroundColor: light ? colors.surface : const Color(0xff171b27),
       surfaceTintColor: Colors.transparent,
       showDragHandle: true,
       shape: const RoundedRectangleBorder(

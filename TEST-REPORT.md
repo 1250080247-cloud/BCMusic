@@ -1,4 +1,22 @@
-# BÁO CÁO KIỂM THỬ VÀ NGHIỆM THU TÍNH NĂNG & HOÀN THIỆN HỆ THỐNG (TEST REPORT)
+# Báo cáo kiểm thử BCMusic
+
+## Bản vá sau v1.3.0
+
+Các kiểm tra dưới đây chạy trên mã bản vá với phiên bản APK `1.3.0+2015` theo `mobile/pubspec.yaml`.
+
+| Kiểm tra | Kết quả |
+| --- | --- |
+| `npm test` | 231/231 qua |
+| `npm run build` | Build production thành công, gồm `/api/version` |
+| ESLint trên các tệp JavaScript thay đổi | Qua |
+| `npm run lint -- src tests scripts` | 7 lỗi và 3 cảnh báo trong các component ngoài phạm vi bản vá |
+| `flutter analyze --no-pub` | Không có lỗi hoặc cảnh báo |
+| `flutter test --no-pub --concurrency=1` | 69/69 qua |
+| Gradle `:app:testDebugUnitTest` với một worker | 54 qua, 2 test live-source bỏ qua |
+| `flutter build web --no-pub --no-wasm-dry-run --no-web-resources-cdn --optimization-level=1 --target lib/preview.dart` | Build preview thành công |
+| Chrome, bản Flutter preview đã build | Mở Đang phát từ trình phát thu nhỏ, chọn Lời bài hát và thấy lời mẫu hiển thị |
+
+## Android 1.2.7
 
 **Dự án:** BCMusic Personal App & Web Ecosystem<br>
 **Nền tảng:** Android 1.2.7 (VersionCode: 2012) & Next.js 16.4.3 (Turbopack)<br>

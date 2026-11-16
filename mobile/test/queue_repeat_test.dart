@@ -47,7 +47,7 @@ class QueueTestMusicPlatform implements MusicPlatform {
     bool enqueueIfMissing = false,
   }) async {}
   @override
-  Future<void> deletePlaylist(String playlistId) async {}
+  Future<void> deletePlaylist(String playlistId, {bool removeDownloads = false}) async {}
   @override
   Future<void> addToPlaylist(String playlistId, String id) async {}
   @override

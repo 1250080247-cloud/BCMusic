@@ -101,7 +101,7 @@ export async function POST(request) {
 
     const statusCode = error.message?.includes('oEmbed failed') ? 422 : 500;
     return NextResponse.json(
-      { success: false, message: error.message },
+      { success: false, message: statusCode === 422 ? 'Không đọc được link SoundCloud.' : 'Không thể nhập bài SoundCloud.' },
       { status: statusCode }
     );
   }
@@ -141,7 +141,7 @@ export async function GET(request) {
   } catch (error) {
     console.error('SoundCloud tracks GET error:', error);
     return NextResponse.json(
-      { success: false, message: error.message },
+      { success: false, message: 'Không thể tải danh sách SoundCloud.' },
       { status: 500 }
     );
   }
@@ -189,7 +189,7 @@ export async function DELETE(request) {
   } catch (error) {
     console.error('SoundCloud track DELETE error:', error);
     return NextResponse.json(
-      { success: false, message: error.message },
+      { success: false, message: 'Không thể xóa bài SoundCloud.' },
       { status: 500 }
     );
   }

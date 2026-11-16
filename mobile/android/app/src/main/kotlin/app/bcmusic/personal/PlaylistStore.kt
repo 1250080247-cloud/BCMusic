@@ -55,6 +55,21 @@ class PlaylistStore(context: Context) {
     }
     @Synchronized fun remove(id: String, trackId: String) = update(id) { it.copy(trackIds = it.trackIds - trackId) }
     @Synchronized fun delete(id: String) { ensureLoaded(); persist(items.filterNot { it.id == id }) }
+
+    @Synchronized internal fun exclusiveDownloads(
+        playlistId: String,
+        pendingElsewhere: List<String>,
+        completedDownloadId: (String) -> String?,
+    ): List<String> {
+        ensureLoaded()
+        val playlist = items.firstOrNull { it.id == playlistId } ?: return emptyList()
+        val candidates = playlist.trackIds.mapNotNull(completedDownloadId).distinct()
+        if (candidates.isEmpty()) return emptyList()
+        val shared = (items.asSequence().filter { it.id != playlistId }.flatMap { it.trackIds } + pendingElsewhere)
+            .distinct().mapNotNull(completedDownloadId).toSet()
+        return candidates.filterNot { it in shared }
+    }
+
     @Synchronized fun removeTrack(trackId: String) {
         ensureLoaded()
         if (items.any { trackId in it.trackIds }) persist(items.map { it.copy(trackIds = it.trackIds - trackId) })

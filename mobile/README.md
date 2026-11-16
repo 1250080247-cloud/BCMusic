@@ -28,7 +28,7 @@ App kiểm tra GitHub Release mới nhất của repo mỗi lần mở. Khi phá
 2. Build APK theo phần [Build trên Windows](#build-trên-windows) bên dưới.
 3. Tạo GitHub Release với tag `vX.Y.Z` khớp phiên bản và đính kèm file `.apk`. Nếu có nhiều APK, app ưu tiên file có `arm64` trong tên.
 
-Các bản cài trước 1.3.1 gọi một endpoint không còn tồn tại nên không nhận được thông báo. Cần cài thủ công bản 1.3.1 một lần.
+Các bản cài trước 1.3.1 kiểm tra cập nhật qua website. Để phục vụ các bản đó, cấu hình `BCMUSIC_ANDROID_VERSION` và `BCMUSIC_ANDROID_DOWNLOAD_URL` với APK đã ký. `GET /api/version` trả `204` khi chưa có cấu hình hợp lệ.
 
 ## Build trên Windows
 

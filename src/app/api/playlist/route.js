@@ -28,7 +28,7 @@ export async function GET(request) {
     return NextResponse.json({ success: true, data: formatted });
   } catch (error) {
     console.error('Playlist GET error:', error);
-    return NextResponse.json({ success: false, message: error.message }, { status: 500 });
+    return NextResponse.json({ success: false, message: 'Không thể xử lý playlist.' }, { status: 500 });
   }
 }
 
@@ -62,7 +62,7 @@ export async function POST(request) {
     });
   } catch (error) {
     console.error('Playlist POST error:', error);
-    return NextResponse.json({ success: false, message: error.message }, { status: 500 });
+    return NextResponse.json({ success: false, message: 'Không thể xử lý playlist.' }, { status: 500 });
   }
 }
 
@@ -126,7 +126,7 @@ export async function PATCH(request) {
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Playlist PATCH error:', error);
-    return NextResponse.json({ success: false, message: error.message }, { status: 500 });
+    return NextResponse.json({ success: false, message: 'Không thể xử lý playlist.' }, { status: 500 });
   }
 }
 
@@ -160,6 +160,6 @@ export async function DELETE(request) {
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Playlist DELETE error:', error);
-    return NextResponse.json({ success: false, message: error.message }, { status: 500 });
+    return NextResponse.json({ success: false, message: 'Không thể xử lý playlist.' }, { status: 500 });
   }
 }

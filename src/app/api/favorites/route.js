@@ -33,7 +33,7 @@ export async function GET(request) {
     return NextResponse.json({ success: true, data: await restoreSoundCloudMetadata(formatted, userId) });
   } catch (error) {
     console.error('Favorites GET error:', error);
-    return NextResponse.json({ success: false, message: error.message }, { status: 500 });
+    return NextResponse.json({ success: false, message: 'Không thể xử lý danh sách yêu thích.' }, { status: 500 });
   }
 }
 
@@ -82,7 +82,7 @@ export async function POST(request) {
     return NextResponse.json({ success: true, data: favorite });
   } catch (error) {
     console.error('Favorites POST error:', error);
-    return NextResponse.json({ success: false, message: error.message }, { status: 500 });
+    return NextResponse.json({ success: false, message: 'Không thể xử lý danh sách yêu thích.' }, { status: 500 });
   }
 }
 
@@ -116,6 +116,6 @@ export async function DELETE(request) {
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Favorites DELETE error:', error);
-    return NextResponse.json({ success: false, message: error.message }, { status: 500 });
+    return NextResponse.json({ success: false, message: 'Không thể xử lý danh sách yêu thích.' }, { status: 500 });
   }
 }

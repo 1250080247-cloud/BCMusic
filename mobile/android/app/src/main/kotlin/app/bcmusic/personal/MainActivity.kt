@@ -496,6 +496,18 @@ class MainActivity : FlutterActivity(), EventChannel.StreamHandler {
                     }
                     "deletePlaylist" -> {
                         val playlist = call.argument<String>("playlistId") ?: ""
+                        if (call.argument<Boolean>("removeDownloads") == true) {
+                            library.awaitReady()
+                            val pendingElsewhere = library.pendingPlaylists.entries
+                                .filter { it.playlistId != playlist }.map { it.trackId }
+                            val downloads = library.playlists.exclusiveDownloads(playlist, pendingElsewhere) { id ->
+                                library.findNullable(id)?.takeIf { it.state == Download.STATE_COMPLETED }?.request?.id
+                            }
+                            for (trackId in downloads) {
+                                library.remove(trackId)
+                                removeLyrics(trackId)
+                            }
+                        }
                         withContext(Dispatchers.IO) {
                             library.playlists.delete(playlist)
                             library.pendingPlaylists.removePlaylist(playlist)
@@ -701,8 +713,24 @@ class MainActivity : FlutterActivity(), EventChannel.StreamHandler {
                         library.cancelSleepTimer()
                         result.success(null)
                     }
-                    "openWebsite" -> {
-                        val uri = Uri.parse(BCMUSIC_ORIGIN_URL)
+                    "getAppVersion" -> {
+                        @Suppress("DEPRECATION")
+                        val info = packageManager.getPackageInfo(packageName, 0)
+                        result.success(info.versionName)
+                    }
+                    "openWebsite", "openUrl" -> {
+                        val uri = if (call.method == "openWebsite") {
+                            Uri.parse(BCMUSIC_ORIGIN_URL)
+                        } else {
+                            val url = call.argument<String>("url").orEmpty()
+                            val parsed = runCatching { java.net.URI(url) }.getOrNull()
+                            if (parsed == null || !parsed.scheme.equals("https", ignoreCase = true) ||
+                                parsed.host.isNullOrEmpty() || parsed.rawUserInfo != null
+                            ) {
+                                throw SourceFailure("INVALID_URL", "Link tải phải dùng HTTPS.")
+                            }
+                            Uri.parse(parsed.toASCIIString()).normalizeScheme()
+                        }
                         try { CustomTabsIntent.Builder().build().launchUrl(this@MainActivity, uri) }
                         catch (_: android.content.ActivityNotFoundException) {
                             startActivity(Intent(Intent.ACTION_VIEW, uri))

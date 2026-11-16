@@ -37,4 +37,23 @@ class PlaylistStoreTest {
         val store = PlaylistStore(context).also { it.load() }
         assertThrows(SourceFailure::class.java) { store.create("  ") }
     }
+
+    @Test fun deletingPlaylistOnlySelectsCompletedDownloadsNotSharedWithOtherPlaylists() {
+        val store = PlaylistStore(context).also { it.load() }
+        val playlist = store.create("Xóa", "youtube_private")
+        listOf("soundcloud_shared", "youtube_pending", "youtube_missing").forEach {
+            store.add(playlist.id, it)
+        }
+        store.create("Giữ", "soundcloud_old_alias")
+        val completed = mapOf(
+            "youtube_private" to "youtube_private",
+            "youtube_pending" to "youtube_pending",
+            "soundcloud_shared" to "soundcloud_shared",
+            "soundcloud_old_alias" to "soundcloud_shared",
+        )
+        assertEquals(
+            listOf("youtube_private"),
+            store.exclusiveDownloads(playlist.id, listOf("youtube_pending"), completed::get),
+        )
+    }
 }

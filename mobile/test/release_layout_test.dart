@@ -10,6 +10,27 @@ import 'controller_test.dart' show FakeMusicPlatform;
 import 'home_screen_test.dart' show EmptyDiscoveryRepository;
 
 void main() {
+  testWidgets('navigation grows to fit labels at triple text scale', (tester) async {
+    Future<double> barHeight(double scale) async {
+      await tester.pumpWidget(MaterialApp(
+        home: MediaQuery(
+          data: MediaQueryData(textScaler: TextScaler.linear(scale)),
+          child: Scaffold(
+            bottomNavigationBar: GlassNavigationBar(
+              selectedIndex: 0,
+              onDestinationSelected: (_) {},
+            ),
+          ),
+        ),
+      ));
+      return tester.getSize(find.byType(GlassNavigationBar)).height;
+    }
+
+    final normalHeight = await barHeight(1);
+    expect(await barHeight(3), greaterThan(normalHeight));
+    expect(tester.takeException(), isNull);
+  });
+
   for (final light in [false, true]) {
     for (final size in [
       const Size(375, 812),

@@ -28,6 +28,8 @@ class DiscoveryScreen extends StatelessWidget {
     required this.onDownload,
     required this.onLibrary,
     this.spectrum,
+    this.discArtwork,
+    this.isPlaying = false,
     this.online = true,
     this.motion = true,
   });
@@ -37,7 +39,8 @@ class DiscoveryScreen extends StatelessWidget {
   final DiscoverySelection onSong, onPlay;
   final VoidCallback onLibrary;
   final Stream<List<double>>? spectrum;
-  final bool online, motion;
+  final Widget? discArtwork;
+  final bool online, motion, isPlaying;
 
   @override
   Widget build(BuildContext context) => RefreshIndicator(
@@ -50,6 +53,8 @@ class DiscoveryScreen extends StatelessWidget {
             children: [
               ListeningHero(
                 motion: motion,
+                discArtwork: discArtwork,
+                isPlaying: isPlaying,
                 spectrum: spectrum,
                 onPlay: controller.sections.first.songs.isEmpty
                     ? null
@@ -75,17 +80,18 @@ class DiscoveryScreen extends StatelessWidget {
                   separatorBuilder: (_, _) => const SizedBox(width: 8),
                   itemBuilder: (context, index) {
                     final selected = controller.genreIndex == index;
+                    final palette = context.palette;
                     return ChoiceChip(
                       showCheckmark: false,
+                      backgroundColor: palette.raised,
+                      selectedColor: palette.selection,
                       label: Text(
                         index == 0
                             ? '✦ ${musicGenres[index].label}'
                             : musicGenres[index].label,
                       ),
                       labelStyle: TextStyle(
-                        color: selected
-                            ? const Color(0xffddd3f1)
-                            : const Color(0xff959aac),
+                        color: selected ? palette.action : palette.text,
                         fontWeight: selected
                             ? FontWeight.w700
                             : FontWeight.w500,
@@ -208,223 +214,288 @@ class ListeningHero extends StatelessWidget {
     required this.motion,
     this.onPlay,
     this.spectrum,
+    this.discArtwork,
+    this.isPlaying = false,
   });
-  final bool motion;
+  static const double discSize = 136;
+  final bool motion, isPlaying;
   final VoidCallback? onPlay;
   final Stream<List<double>>? spectrum;
+  final Widget? discArtwork;
 
   @override
-  Widget build(BuildContext context) => LiquidGlassCard(
-    borderRadius: 20,
-    padding: EdgeInsets.zero,
-    gradient: const LinearGradient(
-      begin: Alignment.topLeft,
-      end: Alignment.bottomRight,
-      colors: [
-        Color(0xe627243c),
-        Color(0xbf262235),
-        Color(0xb3323543),
-      ],
-    ),
-    borderColor: const Color(0x36c4b4dd),
-    child: Stack(
-      children: [
-        // Đĩa than Vinyl nghệ thuật góc phải (.vinyl trong App.tsx)
-        Positioned(
-          right: -55,
-          top: 14,
-          child: IgnorePointer(
-            child: Container(
-              width: 175,
-              height: 175,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: const SweepGradient(
-                  colors: [
-                    Color(0xff15141c),
-                    Color(0xff33303b),
-                    Color(0xff191720),
-                    Color(0xff45434b),
-                    Color(0xff15141c),
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+    final light = Theme.of(context).brightness == Brightness.light;
+    return LiquidGlassCard(
+      borderRadius: 20,
+      padding: EdgeInsets.zero,
+      gradient: light ? palette.surfaceGradient : const LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [
+          Color(0xe627243c),
+          Color(0xbf262235),
+          Color(0xb3323543),
+        ],
+      ),
+      borderColor: light ? palette.border : const Color(0x36c4b4dd),
+      child: Stack(
+        children: [
+          // Đĩa than Vinyl nghệ thuật góc phải (.vinyl trong App.tsx)
+          Positioned(
+            right: discArtwork == null ? -55 : 12,
+            top: 14,
+            child: IgnorePointer(
+              child: Container(
+                width: discArtwork == null ? 175 : discSize,
+                height: discArtwork == null ? 175 : discSize,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: const SweepGradient(
+                    colors: [
+                      Color(0xff15141c),
+                      Color(0xff33303b),
+                      Color(0xff191720),
+                      Color(0xff45434b),
+                      Color(0xff15141c),
+                    ],
+                  ),
+                  border: discArtwork == null
+                      ? Border.all(color: const Color(0x55747079))
+                      : null,
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Color(0x66090711),
+                      blurRadius: 24,
+                      offset: Offset(-8, 12),
+                    ),
                   ],
                 ),
-                border: Border.all(color: const Color(0x55747079)),
-                boxShadow: const [
-                  BoxShadow(
-                    color: Color(0x66090711),
-                    blurRadius: 24,
-                    offset: Offset(-8, 12),
-                  ),
-                ],
-              ),
-              child: Center(
-                child: Container(
-                  width: 62,
-                  height: 62,
-                  decoration: const BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: LinearGradient(
-                      colors: [Color(0xffd9c8ed), Color(0xff9784b4)],
-                    ),
-                  ),
-                  child: const Center(
-                    child: Text(
-                      'BC',
-                      style: TextStyle(
-                        color: Color(0xff43334d),
-                        fontWeight: FontWeight.w800,
-                        fontSize: 18,
-                        letterSpacing: -1,
+                child: discArtwork != null
+                    ? _RotatingCover(
+                        active: isPlaying && motion,
+                        child: ClipOval(child: discArtwork!),
+                      )
+                    : Center(
+                        child: Container(
+                          width: 62,
+                          height: 62,
+                          decoration: const BoxDecoration(
+                            shape: BoxShape.circle,
+                            gradient: LinearGradient(
+                              colors: [Color(0xffd9c8ed), Color(0xff9784b4)],
+                            ),
+                          ),
+                          child: const Center(
+                            child: Text(
+                              'BC',
+                              style: TextStyle(
+                                color: Color(0xff43334d),
+                                fontWeight: FontWeight.w800,
+                                fontSize: 18,
+                                letterSpacing: -1,
+                              ),
+                            ),
+                          ),
+                        ),
                       ),
-                    ),
+              ),
+            ),
+          ),
+          // Thẻ nổi .hero-floating kèm sóng nhạc trực tiếp
+          Positioned(
+            right: 12,
+            bottom: 18,
+            child: IgnorePointer(
+              child: Transform.rotate(
+                angle: -0.08,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(11),
+                    color: light ? palette.selection : const Color(0x24f0e4ff),
+                    border: Border.all(color: light ? palette.border : const Color(0x30eee5ff)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 24,
+                        height: 24,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(6),
+                          color: light ? palette.surface : const Color(0x30d6c3f5),
+                        ),
+                        child: Icon(
+                          Icons.music_note_rounded,
+                          size: 14,
+                          color: light ? palette.action : const Color(0xffe0d2ee),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Your mood. Your music.',
+                            style: TextStyle(
+                              fontSize: 9.5,
+                              fontWeight: FontWeight.w700,
+                              color: palette.text,
+                            ),
+                          ),
+                          Text(
+                            'Không giới hạn cảm xúc',
+                            style: TextStyle(
+                              fontSize: 8,
+                              color: light ? palette.muted : const Color(0xffb5aabd),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(width: 8),
+                      StreamBuilder<List<double>>(
+                        stream: motion ? spectrum : null,
+                        builder: (context, snapshot) {
+                          final active =
+                              snapshot.hasData &&
+                              snapshot.data!.any((v) => v > 0.05);
+                          return EqualizerBars(active: active, size: 15);
+                        },
+                      ),
+                    ],
                   ),
                 ),
               ),
             ),
           ),
-        ),
-        // Thẻ nổi .hero-floating kèm sóng nhạc trực tiếp
-        Positioned(
-          right: 12,
-          bottom: 18,
-          child: IgnorePointer(
-            child: Transform.rotate(
-              angle: -0.08,
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 8,
-                ),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(11),
-                  color: const Color(0x24f0e4ff),
-                  border: Border.all(color: const Color(0x30eee5ff)),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
+          Padding(
+            padding: EdgeInsets.fromLTRB(
+              22, 24, discArtwork == null ? 90 : discSize + 18, 22,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
                   children: [
                     Container(
-                      width: 24,
-                      height: 24,
+                      width: 5,
+                      height: 5,
                       decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(6),
-                        color: const Color(0x30d6c3f5),
-                      ),
-                      child: const Icon(
-                        Icons.music_note_rounded,
-                        size: 14,
-                        color: Color(0xffe0d2ee),
+                        shape: BoxShape.circle,
+                        color: palette.pink,
                       ),
                     ),
-                    const SizedBox(width: 8),
-                    const Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Your mood. Your music.',
-                          style: TextStyle(
-                            fontSize: 9.5,
-                            fontWeight: FontWeight.w700,
-                          ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        'ÂM NHẠC CHO RIÊNG BẠN',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 10,
+                          letterSpacing: 1.3,
+                          fontWeight: FontWeight.w600,
+                          color: light ? palette.action : const Color(0xffc9b6e8),
                         ),
-                        Text(
-                          'Không giới hạn cảm xúc',
-                          style: TextStyle(
-                            fontSize: 8,
-                            color: Color(0xffb5aabd),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(width: 8),
-                    StreamBuilder<List<double>>(
-                      stream: motion ? spectrum : null,
-                      builder: (context, snapshot) {
-                        final active =
-                            snapshot.hasData &&
-                            snapshot.data!.any((v) => v > 0.05);
-                        return EqualizerBars(active: active, size: 15);
-                      },
+                      ),
                     ),
                   ],
                 ),
-              ),
+                const SizedBox(height: 12),
+                RichText(
+                  text: TextSpan(
+                    style: TextStyle(
+                      fontFamily: 'BeVietnamPro',
+                      fontSize: 28,
+                      height: 1.18,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -1.0,
+                      color: palette.text,
+                    ),
+                    children: [
+                      const TextSpan(text: 'Bật nhạc.\nChạm '),
+                      TextSpan(
+                        text: 'cảm xúc.',
+                        style: TextStyle(color: light ? palette.action : const Color(0xffc9b7ef)),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  'Giai điệu bạn yêu, cảm xúc bạn cần.\nĐể âm nhạc kể câu chuyện của bạn.',
+                  style: TextStyle(
+                    fontSize: 12,
+                    height: 1.6,
+                    color: light ? palette.muted : const Color(0xffa29ab5),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                FilledButton.icon(
+                  style: playButtonStyle(context),
+                  onPressed: onPlay,
+                  icon: const Icon(Icons.play_arrow_rounded, size: 18),
+                  label: const Text('Phát ngay  →'),
+                ),
+              ],
             ),
           ),
-        ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(22, 24, 90, 22),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    width: 5,
-                    height: 5,
-                    decoration: const BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Color(0xffd0b9fd),
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  const Expanded(
-                    child: Text(
-                      'ÂM NHẠC CHO RIÊNG BẠN',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 10,
-                        letterSpacing: 1.3,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xffc9b6e8),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              RichText(
-                text: const TextSpan(
-                  style: TextStyle(
-                    fontFamily: 'BeVietnamPro',
-                    fontSize: 28,
-                    height: 1.18,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: -1.0,
-                    color: Color(0xfff4f5fa),
-                  ),
-                  children: [
-                    TextSpan(text: 'Bật nhạc.\nChạm '),
-                    TextSpan(
-                      text: 'cảm xúc.',
-                      style: TextStyle(color: Color(0xffc9b7ef)),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 10),
-              const Text(
-                'Giai điệu bạn yêu, cảm xúc bạn cần.\nĐể âm nhạc kể câu chuyện của bạn.',
-                style: TextStyle(
-                  fontSize: 12,
-                  height: 1.6,
-                  color: Color(0xffa29ab5),
-                ),
-              ),
-              const SizedBox(height: 16),
-              FilledButton.icon(
-                style: playButtonStyle(context),
-                onPressed: onPlay,
-                icon: const Icon(Icons.play_arrow_rounded, size: 18),
-                label: const Text('Phát ngay  →'),
-              ),
-            ],
-          ),
-        ),
-      ],
-    ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RotatingCover extends StatefulWidget {
+  const _RotatingCover({required this.active, required this.child});
+  final bool active;
+  final Widget child;
+
+  @override
+  State<_RotatingCover> createState() => _RotatingCoverState();
+}
+
+class _RotatingCoverState extends State<_RotatingCover>
+    with SingleTickerProviderStateMixin {
+  late final _turns = AnimationController(
+    vsync: this,
+    duration: const Duration(seconds: 18),
   );
+
+  void _sync() {
+    if (widget.active && !MediaQuery.disableAnimationsOf(context)) {
+      if (!_turns.isAnimating) _turns.repeat();
+    } else {
+      _turns.stop();
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _sync();
+  }
+
+  @override
+  void didUpdateWidget(covariant _RotatingCover oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.active != oldWidget.active) _sync();
+  }
+
+  @override
+  Widget build(BuildContext context) =>
+      RotationTransition(turns: _turns, child: widget.child);
+
+  @override
+  void dispose() {
+    _turns.dispose();
+    super.dispose();
+  }
 }
 
 class FeedCarousel extends StatelessWidget {
@@ -488,7 +559,7 @@ class FeedCarousel extends StatelessWidget {
                             vertical: 4,
                           ),
                           decoration: BoxDecoration(
-                            color: const Color(0x880c1017),
+                            color: const Color(0xdd0c1017),
                             borderRadius: BorderRadius.circular(6),
                             border: Border.all(color: const Color(0x38ffffff)),
                           ),
@@ -497,6 +568,7 @@ class FeedCarousel extends StatelessWidget {
                             style: const TextStyle(
                               fontWeight: FontWeight.w700,
                               fontSize: 11,
+                              color: Colors.white,
                             ),
                           ),
                         ),
@@ -511,7 +583,7 @@ class FeedCarousel extends StatelessWidget {
                           height: 36,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            color: const Color(0x45ffffff),
+                            color: const Color(0xcc14111e),
                             border: Border.all(color: const Color(0x66ffffff)),
                           ),
                           child: const Icon(
@@ -605,10 +677,12 @@ class FeedRows extends StatelessWidget {
           return Padding(
             padding: const EdgeInsets.only(bottom: 8),
             child: Material(
-              color: const Color(0x88171b26),
+              color: Theme.of(context).brightness == Brightness.light
+                  ? context.palette.surface
+                  : const Color(0x88171b26),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(14),
-                side: const BorderSide(color: Color(0x12ffffff)),
+                side: BorderSide(color: context.palette.border),
               ),
               child: InkWell(
                 borderRadius: BorderRadius.circular(14),

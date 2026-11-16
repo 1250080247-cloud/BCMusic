@@ -45,7 +45,7 @@ class PlaylistAddFlowMockPlatform implements MusicPlatform {
     createdPlaylists.add((name, trackId, url, enqueueIfMissing));
   }
   @override
-  Future<void> deletePlaylist(String playlistId) async {}
+  Future<void> deletePlaylist(String playlistId, {bool removeDownloads = false}) async {}
   @override
   Future<void> addToPlaylist(String playlistId, String id) async {
     addedToLocal.add((playlistId, id));

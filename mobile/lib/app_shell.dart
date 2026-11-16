@@ -1,6 +1,8 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'account_screen.dart';
 import 'app_config.dart';
@@ -16,6 +18,7 @@ import 'playlist_screen.dart';
 import 'profile_screen.dart';
 import 'settings_screen.dart';
 import 'track_actions.dart';
+import 'track_widgets.dart';
 import 'update_checker.dart';
 
 class AppShell extends StatefulWidget {
@@ -48,19 +51,34 @@ class _AppShellState extends State<AppShell> {
   }
 
   Future<void> _checkUpdate() async {
-    final update = await checkForUpdate();
-    if (update != null && mounted) {
+    final platform = _music.platform;
+    if (kIsWeb || platform is! AndroidMusicPlatform) return;
+    try {
+      final version = await platform.getAppVersion();
+      if (!mounted || version == null) return;
+      final update = await checkForUpdate(currentVersion: version);
+      if (!mounted || update == null) return;
       await showUpdateDialog(
         context,
         update,
         onDownload: update.downloadUrl.isEmpty
             ? null
-            : () {
-                final platform = _music.platform;
-                if (platform is AndroidMusicPlatform) {
-                  platform.openUrl(update.downloadUrl);
-                }
-              },
+            : () => unawaited(_openUpdate(platform, update.downloadUrl)),
+      );
+    } on PlatformException {
+      // Update checks should not stop the app from starting.
+    } on MissingPluginException {
+      // The Android bridge is absent in the preview.
+    }
+  }
+
+  Future<void> _openUpdate(AndroidMusicPlatform platform, String url) async {
+    try {
+      await platform.openUrl(url);
+    } on PlatformException {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Không mở được link tải bản cập nhật.')),
       );
     }
   }
@@ -254,10 +272,27 @@ class _AppShellState extends State<AppShell> {
     builder: (context, _) {
       final account = _music.snapshot.account;
       final platform = _music.platform;
+      final playlistArtwork = _music.playingPlaylistArtwork;
+      final track = _music.currentTrack;
+      final artworkPath = track?.artworkPath;
+      final artworkUrl = track?.artworkUrl ?? _music.currentSourceItem?.artworkUrl;
+      final discArtwork = switch (playlistArtwork) {
+        final artwork? => PlaylistArtwork(
+          tracks: artwork.tracks,
+          urls: artwork.urls,
+          size: ListeningHero.discSize,
+        ),
+        _ when _music.playback.trackId != null &&
+            (artworkPath?.isNotEmpty == true || artworkUrl?.isNotEmpty == true) =>
+          TrackArtwork(path: artworkPath, url: artworkUrl, size: ListeningHero.discSize),
+        _ => null,
+      };
       final pages = [
         DiscoveryScreen(
           controller: widget.discovery,
           motion: _music.snapshot.preferences.motion,
+          isPlaying: _music.playback.isPlaying,
+          discArtwork: discArtwork,
           spectrum:
               _tab == 0 &&
                   _music.playback.isPlaying &&
@@ -564,61 +599,65 @@ class GlassNavigationBar extends StatelessWidget {
   ];
 
   @override
-  Widget build(BuildContext context) => LiquidGlassCard(
-    borderRadius: 23,
-    blur: 32,
-    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 7),
-    gradient: const LinearGradient(
-      begin: Alignment.topLeft,
-      end: Alignment.bottomRight,
-      colors: [Color(0xd9272a39), Color(0xed191d29)],
-    ),
-    borderColor: const Color(0x28bfc8e4),
-    child: SizedBox(
-      height: 58,
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
-        children: [
-          for (final (index, item) in items.indexed)
-            Expanded(
-              child: InkWell(
-                borderRadius: BorderRadius.circular(18),
-                onTap: () => onDestinationSelected(index),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    AnimatedContainer(
-                      duration: const Duration(milliseconds: 220),
-                      width: 48,
-                      height: 31,
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(20),
-                        gradient: selectedIndex == index
-                            ? const LinearGradient(
-                                colors: [
-                                  Color(0x38c1a4e0),
-                                  Color(0x20b2a3d5),
-                                ],
-                              )
-                            : null,
-                        border: Border.all(
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+    final light = Theme.of(context).brightness == Brightness.light;
+    final unselected = light ? palette.muted : const Color(0xffa7a9bb);
+    return LiquidGlassCard(
+      borderRadius: 23,
+      blur: 32,
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 7),
+      gradient: light ? palette.surfaceGradient : const LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [Color(0xd9272a39), Color(0xed191d29)],
+      ),
+      borderColor: light ? palette.border : const Color(0x28bfc8e4),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 58),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceAround,
+          children: [
+            for (final (index, item) in items.indexed)
+              Expanded(
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(18),
+                  onTap: () => onDestinationSelected(index),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      AnimatedContainer(
+                        duration: const Duration(milliseconds: 220),
+                        width: 48,
+                        height: 31,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(20),
+                          color: light && selectedIndex == index ? palette.selection : null,
+                          gradient: !light && selectedIndex == index
+                              ? const LinearGradient(
+                                  colors: [
+                                    Color(0x38c1a4e0),
+                                    Color(0x20b2a3d5),
+                                  ],
+                                )
+                              : null,
+                          border: Border.all(
+                            color: selectedIndex == index
+                                ? (light ? palette.border : const Color(0x40c1ade5))
+                                : Colors.transparent,
+                          ),
+                        ),
+                        child: Icon(
+                          selectedIndex == index ? item.$2 : item.$1,
+                          size: 20,
                           color: selectedIndex == index
-                              ? const Color(0x40c1ade5)
-                              : Colors.transparent,
+                              ? (light ? palette.action : const Color(0xffe7dcfa))
+                              : unselected,
                         ),
                       ),
-                      child: Icon(
-                        selectedIndex == index ? item.$2 : item.$1,
-                        size: 20,
-                        color: selectedIndex == index
-                            ? const Color(0xffe7dcfa)
-                            : const Color(0xff7f8399),
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Flexible(
-                      child: Text(
+                      const SizedBox(height: 2),
+                      Text(
                         item.$3,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -628,19 +667,19 @@ class GlassNavigationBar extends StatelessWidget {
                               ? FontWeight.w700
                               : FontWeight.w500,
                           color: selectedIndex == index
-                              ? const Color(0xffd4c4e8)
-                              : const Color(0xff7f8399),
+                              ? (light ? palette.action : const Color(0xffd4c4e8))
+                              : unselected,
                         ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
-            ),
-        ],
+          ],
+        ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 String getGreetingTimeOfDay([DateTime? time]) {

@@ -26,7 +26,33 @@ class MusicController extends ChangeNotifier {
   List<PlaybackQueueItem>? _originalSourceQueueItems;
   List<PlaybackQueueItem> get sourceQueueItems => _sourceQueueItems;
   int? get sourceQueueIndex => _sourceQueue?.$2;
+  PlaybackQueueItem? get currentSourceItem {
+    final index = sourceQueueIndex;
+    return index == null || index < 0 ? null : _sourceQueueItems.elementAtOrNull(index);
+  }
+
+  OfflineTrack? get currentTrack => playback.track ??
+      tracks.where((item) => item.id == playback.trackId).firstOrNull;
+
   List<String>? _offlineQueueIds;
+  String? _playingLocalPlaylistId;
+  List<String?>? _playingPlaylistUrls;
+
+  ({List<OfflineTrack> tracks, List<String?> urls})? get playingPlaylistArtwork {
+    if (playback.trackId == null) return null;
+    final playlist = snapshot.playlists
+        .where((item) => item.id == _playingLocalPlaylistId)
+        .firstOrNull;
+    if (playlist != null) {
+      final ready = {for (final track in tracks.where((item) => item.isReady)) track.id: track};
+      final covers = [for (final id in playlist.trackIds) ?ready[id]];
+      return covers.isEmpty
+          ? null
+          : (tracks: covers.take(4).toList(), urls: const []);
+    }
+    final urls = _playingPlaylistUrls;
+    return urls == null ? null : (tracks: const [], urls: urls);
+  }
   final _queuedBeforePlayback = <PlaybackQueueItem>[];
   String? _handledEnd;
 
@@ -366,7 +392,7 @@ class MusicController extends ChangeNotifier {
       _forTrack(track.id, () => platform.retry(track.id));
   Future<void> remove(OfflineTrack track) =>
       _forTrack(track.id, () => platform.remove(track.id));
-  Future<void> play(OfflineTrack track, {List<String>? queueIds}) {
+  Future<void> play(OfflineTrack track, {List<String>? queueIds, String? playlistId}) {
     if (isPending(track.id)) return Future.value();
     final request = ++_playRequest;
     openingSource = false;
@@ -378,6 +404,8 @@ class MusicController extends ChangeNotifier {
         _originalSourceQueue = null;
         _originalSourceQueueItems = null;
         _offlineQueueIds = queueIds;
+        _playingLocalPlaylistId = playlistId;
+        _playingPlaylistUrls = null;
         final pending = List<PlaybackQueueItem>.of(_queuedBeforePlayback);
         _queuedBeforePlayback.clear();
         if (pending.isNotEmpty) {
@@ -408,6 +436,7 @@ class MusicController extends ChangeNotifier {
     String input, {
     Iterable<String> queue = const [],
     Iterable<PlaybackQueueItem> queueItems = const [],
+    Iterable<String?>? playlistArtworkUrls,
   }) async {
     try {
       final source = SourceLink.parse(input).url;
@@ -434,6 +463,10 @@ class MusicController extends ChangeNotifier {
         source,
         index < 0 ? null : (urls, index),
         queueItems: items,
+        onStarted: () {
+          _playingLocalPlaylistId = null;
+          _playingPlaylistUrls = playlistArtworkUrls?.take(4).toList();
+        },
       );
       if (error == null && sourceQueueIndex != null) {
         _queuedBeforePlayback.removeWhere((item) => urls.contains(item.url));
@@ -448,6 +481,7 @@ class MusicController extends ChangeNotifier {
     (List<String>, int)? selection, {
     List<PlaybackQueueItem>? queueItems,
     bool autoTransition = false,
+    VoidCallback? onStarted,
   }) async {
     final request = ++_playRequest;
     openingSource = true;
@@ -456,6 +490,7 @@ class MusicController extends ChangeNotifier {
     try {
       await platform.playSource(url, autoTransition: autoTransition);
       if (request == _playRequest) {
+        onStarted?.call();
         final isAdvancingSameQueue = _sourceQueue != null &&
             selection != null &&
             _sourceQueue!.$1.length == selection.$1.length &&
@@ -549,11 +584,12 @@ class MusicController extends ChangeNotifier {
       first.url,
       queue: queue.map((e) => e.url),
       queueItems: queue,
+      playlistArtworkUrls: items.map((item) => item.artworkUrl),
     );
   }
 
-  Future<void> deletePlaylist(String id) async {
-    await _perform(() => platform.deletePlaylist(id));
+  Future<void> deletePlaylist(String id, {bool removeDownloads = false}) async {
+    await _perform(() => platform.deletePlaylist(id, removeDownloads: removeDownloads));
   }
 
   Future<void> addToPlaylist(String playlistId, OfflineTrack track) async {
@@ -767,7 +803,7 @@ class MusicController extends ChangeNotifier {
       if (targetIndex >= 0 && targetIndex < ids.length) {
         final track = ready.where((t) => t.id == ids[targetIndex]).firstOrNull;
         if (track != null) {
-          await play(track, queueIds: ids);
+          await play(track, queueIds: ids, playlistId: _playingLocalPlaylistId);
         }
       }
     }

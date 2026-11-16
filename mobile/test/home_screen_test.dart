@@ -3,13 +3,17 @@ import 'dart:async';
 import 'package:bcmusic/account_screen.dart';
 import 'package:bcmusic/app_controller.dart';
 import 'package:bcmusic/app_shell.dart';
+import 'package:bcmusic/app_theme.dart';
 import 'package:bcmusic/main.dart';
 import 'package:bcmusic/models.dart';
 import 'package:bcmusic/discovery.dart';
 import 'package:bcmusic/discovery_screen.dart';
 import 'package:bcmusic/home_screen.dart';
 import 'package:bcmusic/platform_bridge.dart';
+import 'package:bcmusic/playlist_screen.dart';
+import 'package:bcmusic/player_controls.dart';
 import 'package:bcmusic/settings_screen.dart';
+import 'package:bcmusic/track_widgets.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -87,6 +91,111 @@ class _AccountPlaylistPlatform extends AndroidMusicPlatform {
 }
 
 void main() {
+  testWidgets('Home displays the current song cover and readable controls in light mode', (tester) async {
+    const track = OfflineTrack(
+      id: 'youtube_M7lc1UVf-VE',
+      title: 'Nhạc đang phát',
+      artist: 'Nghệ sĩ',
+      sourceUrl: 'https://www.youtube.com/watch?v=M7lc1UVf-VE',
+      provider: 'youtube',
+      status: 'streaming',
+      artworkUrl: 'https://i.ytimg.com/vi/M7lc1UVf-VE/hqdefault.jpg',
+    );
+    final platform = FakeMusicPlatform()..state = LibrarySnapshot(
+      preferences: const AppPreferences(light: true),
+      playback: PlaybackState(trackId: track.id, track: track, isPlaying: true),
+    );
+    final controller = MusicController(platform);
+    await controller.initialize();
+    final discovery = DiscoveryController(EmptyDiscoveryRepository());
+    await tester.pumpWidget(BCMusicApp(controller: controller, discovery: discovery));
+    await tester.pump();
+
+    final hero = find.byType(ListeningHero);
+    final artwork = find.descendant(of: hero, matching: find.byType(TrackArtwork));
+    expect(tester.widget<TrackArtwork>(artwork).url, track.artworkUrl);
+    expect(find.descendant(of: hero, matching: find.text('BC')), findsNothing);
+    final player = find.byType(PlayerControls);
+    final playerCard = find.descendant(of: player, matching: find.byType(LiquidGlassCard));
+    expect(tester.widget<LiquidGlassCard>(playerCard).gradient?.colors.first, AppPalette.light.surface);
+    final title = find.descendant(of: player, matching: find.text(track.title));
+    expect(tester.widget<Text>(title).style?.color, AppPalette.light.text);
+    final chips = tester.widgetList<ChoiceChip>(find.byType(ChoiceChip));
+    expect(chips.first.selectedColor, AppPalette.light.selection);
+    expect(chips.first.labelStyle?.color, AppPalette.light.action);
+
+    await tester.pumpWidget(const SizedBox());
+    controller.dispose();
+    discovery.dispose();
+    await platform.updates.close();
+  });
+
+  testWidgets('playlist cover fills and spins with playback on Home', (tester) async {
+    tester.view.physicalSize = const Size(360, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final track = OfflineTrack.fromMap({...sample.toMap(), 'status': 'completed'});
+    LibrarySnapshot state(bool playing) => LibrarySnapshot(
+      tracks: [track],
+      playlists: [LocalPlaylist(id: 'local', name: 'Nhạc đã tải', trackIds: [track.id])],
+      playback: PlaybackState(trackId: track.id, track: track, isPlaying: playing),
+    );
+    final platform = FakeMusicPlatform()..state = state(true);
+    final controller = MusicController(platform);
+    await controller.initialize();
+    final discovery = DiscoveryController(EmptyDiscoveryRepository());
+    await tester.pumpWidget(BCMusicApp(controller: controller, discovery: discovery));
+    final cover = find.descendant(of: find.byType(ListeningHero), matching: find.byType(PlaylistArtwork));
+    expect(cover, findsNothing);
+    await controller.play(track, queueIds: [track.id], playlistId: 'local');
+    await tester.pump();
+    expect(tester.widget<PlaylistArtwork>(cover).tracks, [track]);
+    expect(tester.getSize(cover), const Size.square(ListeningHero.discSize));
+    final rotation = find.ancestor(of: cover, matching: find.byType(RotationTransition));
+    final turns = tester.widget<RotationTransition>(rotation).turns;
+    final initial = turns.value;
+    await tester.pump(const Duration(seconds: 1));
+    expect(turns.value, greaterThan(initial));
+
+    platform.updates.add(state(false));
+    await tester.pump();
+    final paused = turns.value;
+    await tester.pump(const Duration(seconds: 1));
+    expect(turns.value, paused);
+    expect(cover, findsOneWidget);
+    await controller.play(track);
+    await tester.pump();
+    expect(cover, findsNothing);
+
+    await tester.pumpWidget(const SizedBox());
+    controller.dispose();
+    discovery.dispose();
+    await platform.updates.close();
+  });
+
+  testWidgets('settings sheet follows light theme while already open', (tester) async {
+    final platform = FakeMusicPlatform();
+    final controller = MusicController(platform);
+    await controller.initialize();
+    final discovery = DiscoveryController(EmptyDiscoveryRepository());
+    await tester.pumpWidget(BCMusicApp(controller: controller, discovery: discovery));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Cài đặt'));
+    await tester.pumpAndSettle();
+
+    platform.updates.add(const LibrarySnapshot(preferences: AppPreferences(light: true)));
+    await tester.pumpAndSettle();
+    final sheet = find.descendant(of: find.byType(BottomSheet), matching: find.byType(Material));
+    expect(tester.widget<Material>(sheet.first).color, AppPalette.light.surface);
+    expect(tester.widget<Text>(find.text('Âm lượng')).style?.color, AppPalette.light.text);
+
+    await tester.pumpWidget(const SizedBox());
+    controller.dispose();
+    discovery.dispose();
+    await platform.updates.close();
+  });
+
   testWidgets('search suggestions submit a query and history can be reused', (
     tester,
   ) async {

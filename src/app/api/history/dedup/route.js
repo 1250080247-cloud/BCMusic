@@ -43,6 +43,6 @@ export async function POST(request) {
     });
   } catch (error) {
     console.error('Dedup error:', error);
-    return NextResponse.json({ success: false, message: error.message }, { status: 500 });
+    return NextResponse.json({ success: false, message: 'Không thể dọn lịch sử nghe.' }, { status: 500 });
   }
 }

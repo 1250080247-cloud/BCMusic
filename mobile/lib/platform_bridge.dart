@@ -23,7 +23,7 @@ abstract class MusicPlatform {
     String? url,
     bool enqueueIfMissing = false,
   });
-  Future<void> deletePlaylist(String playlistId);
+  Future<void> deletePlaylist(String playlistId, {bool removeDownloads = false});
   Future<void> addToPlaylist(String playlistId, String id);
   Future<void> enqueueAndAddToPlaylist(
     String playlistId,
@@ -208,8 +208,11 @@ class AndroidMusicPlatform implements MusicPlatform {
       );
 
   @override
-  Future<void> deletePlaylist(String playlistId) =>
-      _methods.invokeMethod('deletePlaylist', {'playlistId': playlistId});
+  Future<void> deletePlaylist(String playlistId, {bool removeDownloads = false}) =>
+      _methods.invokeMethod('deletePlaylist', {
+        'playlistId': playlistId,
+        'removeDownloads': removeDownloads,
+      });
   @override
   Future<void> addToPlaylist(String playlistId, String id) => _methods
       .invokeMethod('addToPlaylist', {'playlistId': playlistId, 'id': id});
@@ -236,6 +239,8 @@ class AndroidMusicPlatform implements MusicPlatform {
       _methods.invokeMethod('skip', {'direction': direction});
   @override
   Future<void> openWebsite() => _methods.invokeMethod('openWebsite');
+  Future<String?> getAppVersion() =>
+      _methods.invokeMethod<String>('getAppVersion');
   Future<void> openUrl(String url) =>
       _methods.invokeMethod('openUrl', {'url': url});
   @override

@@ -76,7 +76,7 @@ export async function POST(request) {
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Playlist song POST error:', error);
-    return NextResponse.json({ success: false, message: error.message }, { status: 500 });
+    return NextResponse.json({ success: false, message: 'Không thể cập nhật bài hát trong playlist.' }, { status: 500 });
   }
 }
 
@@ -113,6 +113,6 @@ export async function DELETE(request) {
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Playlist song DELETE error:', error);
-    return NextResponse.json({ success: false, message: error.message }, { status: 500 });
+    return NextResponse.json({ success: false, message: 'Không thể cập nhật bài hát trong playlist.' }, { status: 500 });
   }
 }

@@ -55,7 +55,7 @@ export async function GET(request) {
     });
   } catch (error) {
     console.error('History fetch error:', error);
-    return NextResponse.json({ success: false, message: error.message }, { status: 500 });
+    return NextResponse.json({ success: false, message: 'Không thể xử lý lịch sử nghe.' }, { status: 500 });
   }
 }
 
@@ -101,6 +101,6 @@ export async function POST(request) {
     return NextResponse.json({ success: true, data: doc });
   } catch (error) {
     console.error('History save error:', error);
-    return NextResponse.json({ success: false, message: error.message }, { status: 500 });
+    return NextResponse.json({ success: false, message: 'Không thể xử lý lịch sử nghe.' }, { status: 500 });
   }
 }
