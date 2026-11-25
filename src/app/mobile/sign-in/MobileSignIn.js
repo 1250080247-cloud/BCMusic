@@ -3,10 +3,16 @@
 import { useState } from 'react';
 import { signIn, useSession } from 'next-auth/react';
 
-export default function MobileSignIn({ state, challenge }) {
+function describeOAuthError(code) {
+  if (!code) return '';
+  if (code === 'AccessDenied') return 'Tài khoản Google chưa cấp quyền đăng nhập.';
+  return 'Đăng nhập Google chưa hoàn tất. Hãy thử lại.';
+}
+
+export default function MobileSignIn({ state, challenge, oauthError = '' }) {
   const { data: session, status } = useSession();
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState(() => describeOAuthError(oauthError));
   const [callback, setCallback] = useState('');
   const valid = Boolean(state && challenge);
 
@@ -14,7 +20,16 @@ export default function MobileSignIn({ state, challenge }) {
     setBusy(true);
     setError('');
     try {
-      await signIn('google', { callbackUrl: window.location.href }, { prompt: 'select_account' });
+      const cleanUrl = new URL(window.location.href);
+      cleanUrl.searchParams.delete('error');
+      const res = await signIn(
+        'google',
+        { callbackUrl: cleanUrl.toString() },
+        { prompt: 'select_account' },
+      );
+      if (res?.error) {
+        setError(describeOAuthError(res.error));
+      }
     } catch {
       setError('Không mở được đăng nhập Google. Hãy thử lại.');
     } finally {

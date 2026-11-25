@@ -76,3 +76,81 @@ test('mobile exchange binds state, verifier and expiry before consuming the gran
   assert.equal((await POST(jsonRequest(path, { state, code, verifier }))).status, 401);
   assert.equal(issued, 1);
 });
+
+test('normalizeProductionNextAuthUrl repairs localhost NEXTAUTH_URL on Vercel without affecting local dev', async () => {
+  const { normalizeProductionNextAuthUrl, authOptions } = await loadModule('src/lib/auth.js', {
+    stubs: {
+      'next-auth/providers/credentials': { default: (options) => ({ id: 'credentials', ...options }) },
+      'next-auth/providers/google': { default: (options) => ({ id: 'google', ...options }) },
+      bcryptjs: { default: { hashSync: () => 'hash', compare: async () => false } },
+      '@/lib/mongodb': { default: async () => {} },
+      '@/lib/rate-limit': { consumeRateLimit: async () => true },
+      '@/models/User': { default: {} },
+    },
+  });
+
+  const localEnv = { NEXTAUTH_URL: 'http://localhost:3000' };
+  assert.equal(normalizeProductionNextAuthUrl(localEnv), 'http://localhost:3000');
+  assert.equal(localEnv.NEXTAUTH_URL, 'http://localhost:3000');
+
+  const vercelBrokenEnv = {
+    VERCEL: '1',
+    NEXTAUTH_URL: 'http://localhost:3000',
+    VERCEL_PROJECT_PRODUCTION_URL: 'bc-music-gilt.vercel.app',
+  };
+  assert.equal(normalizeProductionNextAuthUrl(vercelBrokenEnv), 'https://bc-music-gilt.vercel.app');
+  assert.equal(vercelBrokenEnv.NEXTAUTH_URL, 'https://bc-music-gilt.vercel.app');
+
+  const googleProvider = authOptions.providers.find((p) => p.id === 'google');
+  assert.equal(googleProvider.authorization.params.scope, 'openid email profile');
+});
+
+test('mobileSessionCookieName uses __Secure- on Vercel HTTPS even if NEXTAUTH_URL was localhost', async () => {
+  const { mobileSessionCookieName } = await loadModule('src/lib/mobile-auth.js', {
+    globals: { process: { env: { VERCEL: '1', NEXTAUTH_URL: 'http://localhost:3000' } } },
+  });
+  const req = new Request('https://bc-music-gilt.vercel.app/api/mobile/auth/exchange', {
+    headers: { 'x-forwarded-proto': 'https' },
+  });
+  assert.equal(mobileSessionCookieName(req), '__Secure-next-auth.session-token');
+});
+
+test('Google signIn normalizes email, rejects unverified email, and creates valid username fallback', async () => {
+  const created = [];
+  const { authOptions } = await loadModule('src/lib/auth.js', {
+    stubs: {
+      'next-auth/providers/credentials': { default: (options) => ({ id: 'credentials', ...options }) },
+      'next-auth/providers/google': { default: (options) => ({ id: 'google', ...options }) },
+      bcryptjs: { default: { hashSync: () => 'hash', compare: async () => false } },
+      '@/lib/mongodb': { default: async () => {} },
+      '@/lib/rate-limit': { consumeRateLimit: async () => true },
+      '@/models/User': {
+        default: {
+          findOne: async () => null,
+          create: async (doc) => { created.push(doc); return doc; },
+        },
+      },
+    },
+  });
+
+  assert.equal(
+    await authOptions.callbacks.signIn({
+      account: { provider: 'google' },
+      profile: { email: 'user@example.com', email_verified: false },
+    }),
+    false,
+  );
+  assert.equal(created.length, 0);
+
+  assert.equal(
+    await authOptions.callbacks.signIn({
+      account: { provider: 'google' },
+      profile: { email: '  ._@Example.COM  ', email_verified: true, name: 'Test User', picture: 'https://lh3.googleusercontent.com/a/test' },
+    }),
+    true,
+  );
+  assert.equal(created.length, 1);
+  assert.equal(created[0].email, '._@example.com');
+  assert.match(created[0].username, /^user_[a-z0-9]+$/);
+  assert.ok(created[0].username.length >= 3 && created[0].username.length <= 30);
+});

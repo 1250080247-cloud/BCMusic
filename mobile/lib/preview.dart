@@ -72,6 +72,7 @@ void main() {
     BCMusicApp(
       controller: controller,
       phonePreview: true,
+      showSplash: true,
       discovery: DiscoveryController(_PreviewDiscovery()),
     ),
   );
@@ -461,6 +462,15 @@ class _PreviewPlatform extends AndroidMusicPlatform {
     _account = AccountProfile(
       name: displayName ?? username,
       username: username,
+    );
+    _updates.add(_state);
+  }
+
+  @override
+  Future<void> startGoogle() async {
+    _account = const AccountProfile(
+      name: 'Người nghe nhạc (Google)',
+      username: 'google_preview',
     );
     _updates.add(_state);
   }

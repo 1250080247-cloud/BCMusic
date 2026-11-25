@@ -13,6 +13,99 @@ import 'platform_io.dart';
 import 'track_actions.dart';
 import 'track_widgets.dart';
 
+Rect? _measureMiniPlayerRect(
+  BuildContext cardContext,
+  NavigatorState navigator,
+) {
+  final cardBox = cardContext.findRenderObject() as RenderBox?;
+  final navBox = navigator.context.findRenderObject() as RenderBox?;
+  if (cardBox == null ||
+      navBox == null ||
+      !cardBox.hasSize ||
+      !navBox.hasSize) {
+    return null;
+  }
+  final topLeft = cardBox.localToGlobal(Offset.zero, ancestor: navBox);
+  return topLeft & cardBox.size;
+}
+
+Rect _clampSourceRect(Rect? rawSource, Size viewport) {
+  final fallback = Rect.fromLTWH(
+    10,
+    math.max(0.0, viewport.height - 146),
+    math.max(120.0, viewport.width - 20),
+    66,
+  );
+  final source = rawSource ?? fallback;
+  final width = source.width.clamp(80.0, viewport.width).toDouble();
+  final height = source.height.clamp(48.0, viewport.height).toDouble();
+  final left = source.left
+      .clamp(0.0, math.max(0.0, viewport.width - width))
+      .toDouble();
+  final top = source.top
+      .clamp(0.0, math.max(0.0, viewport.height - height))
+      .toDouble();
+  return Rect.fromLTWH(left, top, width, height);
+}
+
+class _SymmetricCurvedBuilder extends StatefulWidget {
+  const _SymmetricCurvedBuilder({
+    required this.animation,
+    required this.curve,
+    required this.builder,
+    this.child,
+  });
+
+  final Animation<double> animation;
+  final Curve curve;
+  final Widget Function(
+    BuildContext context,
+    Animation<double> curvedAnimation,
+    Widget? child,
+  ) builder;
+  final Widget? child;
+
+  @override
+  State<_SymmetricCurvedBuilder> createState() =>
+      _SymmetricCurvedBuilderState();
+}
+
+class _SymmetricCurvedBuilderState extends State<_SymmetricCurvedBuilder> {
+  late CurvedAnimation _curved;
+
+  @override
+  void initState() {
+    super.initState();
+    _curved = _createCurved();
+  }
+
+  CurvedAnimation _createCurved() => CurvedAnimation(
+    parent: widget.animation,
+    curve: widget.curve,
+    reverseCurve: widget.curve.flipped,
+  );
+
+  @override
+  void didUpdateWidget(covariant _SymmetricCurvedBuilder oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.animation != oldWidget.animation ||
+        widget.curve != oldWidget.curve) {
+      _curved.dispose();
+      _curved = _createCurved();
+    }
+  }
+
+  @override
+  void dispose() {
+    _curved.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) =>
+      widget.builder(context, _curved, widget.child);
+}
+
 class PlayerControls extends StatelessWidget {
   const PlayerControls({
     super.key,
@@ -24,8 +117,150 @@ class PlayerControls extends StatelessWidget {
   final ValueChanged<OfflineTrack> onAddToPlaylist;
   final ValueChanged<String> onDownload;
 
-  @override
-  Widget build(BuildContext context) {
+  void _openNowPlaying(BuildContext cardContext) {
+    final navigator = Navigator.of(cardContext);
+    final sourceRect = _measureMiniPlayerRect(cardContext, navigator);
+    final disableAnimations = MediaQuery.disableAnimationsOf(cardContext);
+    navigator.push<void>(
+      PageRouteBuilder<void>(
+        fullscreenDialog: true,
+        opaque: true,
+        transitionDuration: disableAnimations
+            ? Duration.zero
+            : const Duration(milliseconds: 280),
+        reverseTransitionDuration: disableAnimations
+            ? Duration.zero
+            : const Duration(milliseconds: 240),
+        pageBuilder: (_, _, _) => _NowPlaying(
+          controller: controller,
+          onAddToPlaylist: onAddToPlaylist,
+          onDownload: onDownload,
+        ),
+        transitionsBuilder: (context, animation, _, child) {
+          if (MediaQuery.disableAnimationsOf(context) ||
+              animation.status == AnimationStatus.completed) {
+            return child;
+          }
+          final palette = context.palette;
+          final light = Theme.of(context).brightness == Brightness.light;
+          return _SymmetricCurvedBuilder(
+            animation: animation,
+            curve: Curves.easeOutCubic,
+            child: child,
+            builder: (context, curved, innerChild) => AnimatedBuilder(
+              animation: curved,
+              child: innerChild,
+              builder: (context, routeChild) {
+                final t = curved.value.clamp(0.0, 1.0);
+                return LayoutBuilder(
+                  builder: (context, constraints) {
+                    final fullRect = Offset.zero & constraints.biggest;
+                    final safeSource = _clampSourceRect(
+                      sourceRect,
+                      constraints.biggest,
+                    );
+                    final rect = Rect.lerp(safeSource, fullRect, t)!;
+                    final radius = 17.0 * (1.0 - t);
+                    final contentOpacity = ((t - 0.12) / 0.45).clamp(0.0, 1.0);
+                    final miniOpacity = ((0.35 - t) / 0.35).clamp(0.0, 1.0);
+                    final containerOpacity = (t / 0.12).clamp(0.0, 1.0);
+                    final surfaceColor = Color.lerp(
+                      light ? palette.surface : const Color(0xff252333),
+                      const Color(0xff14111e),
+                      t,
+                    )!;
+                    final borderColor = Color.lerp(
+                      light ? palette.border : const Color(0x36c2b4dd),
+                      Colors.transparent,
+                      t,
+                    )!;
+
+                    return Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        IgnorePointer(
+                          child: ColoredBox(
+                            color: Colors.black.withValues(alpha: 0.48 * t),
+                          ),
+                        ),
+                        Positioned.fromRect(
+                          rect: rect,
+                          child: Opacity(
+                            opacity: containerOpacity,
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(radius),
+                              child: DecoratedBox(
+                                decoration: BoxDecoration(
+                                  color: surfaceColor,
+                                  borderRadius: BorderRadius.circular(radius),
+                                  border: borderColor.a > 0
+                                      ? Border.all(color: borderColor)
+                                      : null,
+                                ),
+                                child: Stack(
+                                  fit: StackFit.expand,
+                                  children: [
+                                    Opacity(
+                                      opacity: contentOpacity,
+                                      child: FittedBox(
+                                        fit: BoxFit.fitWidth,
+                                        alignment: Alignment.topCenter,
+                                        child: SizedBox(
+                                          width: fullRect.width,
+                                          height: fullRect.height,
+                                          child: routeChild,
+                                        ),
+                                      ),
+                                    ),
+                                    if (miniOpacity > 0)
+                                      Opacity(
+                                        opacity: miniOpacity,
+                                        child: IgnorePointer(
+                                          child: ExcludeSemantics(
+                                            child: Material(
+                                              type: MaterialType.transparency,
+                                              child: Align(
+                                                alignment: Alignment.topCenter,
+                                                child: FittedBox(
+                                                  fit: BoxFit.fitWidth,
+                                                  alignment:
+                                                      Alignment.topCenter,
+                                                  child: SizedBox(
+                                                    width: safeSource.width,
+                                                    child: _buildMiniCardBody(
+                                                      context,
+                                                      interactive: false,
+                                                    ),
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    );
+                  },
+                );
+              },
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildMiniCardBody(
+    BuildContext context, {
+    required bool interactive,
+    VoidCallback? onOpen,
+  }) {
     final playback = controller.playback;
     final palette = context.palette;
     final light = Theme.of(context).brightness == Brightness.light;
@@ -35,130 +270,141 @@ class PlayerControls extends StatelessWidget {
         ? (playback.positionMs / playback.durationMs).clamp(0.02, 1.0)
         : 0.05;
 
-    return LiquidGlassCard(
-      borderRadius: 17,
-      blur: 28,
-      gradient: light ? palette.surfaceGradient : const LinearGradient(
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-        colors: [
-          Color(0xc9353043),
-          Color(0xe6252333),
-          Color(0xdc2b2639),
-        ],
-      ),
-      borderColor: light ? palette.border : const Color(0x36c2b4dd),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // Thanh tiến trình 3 màu (.mobile-progress trong index.css)
-          Align(
-            alignment: Alignment.centerLeft,
-            child: FractionallySizedBox(
-              widthFactor: fraction,
-              child: Container(
-                height: 2.2,
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      Color(0xff8bc5d5),
-                      Color(0xffc3a2f2),
-                      Color(0xffe0b6d2),
-                    ],
-                  ),
+    final trackRow = Row(
+      children: [
+        TrackArtwork(
+          path: track?.artworkPath,
+          url: playback.offline
+              ? null
+              : (track?.artworkUrl ?? sourceItem?.artworkUrl),
+          size: 42,
+        ),
+        const SizedBox(width: 11),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                track?.title ?? sourceItem?.title ?? 'Đang phát',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: palette.text,
+                ),
+              ),
+              const SizedBox(height: 3),
+              Text(
+                playback.error ??
+                    '${playback.offline ? "Đã tải" : "Trực tuyến"} · ${formatTime(playback.positionMs)}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 11,
+                  color: playback.error == null
+                      ? (light ? palette.muted : const Color(0xffa396b2))
+                      : Theme.of(context).colorScheme.error,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Thanh tiến trình 3 màu (.mobile-progress trong index.css)
+        Align(
+          alignment: Alignment.centerLeft,
+          child: FractionallySizedBox(
+            widthFactor: fraction,
+            child: Container(
+              height: 2.2,
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    Color(0xff8bc5d5),
+                    Color(0xffc3a2f2),
+                    Color(0xffe0b6d2),
+                  ],
                 ),
               ),
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(10, 7, 6, 7),
-            child: Row(
-              children: [
-                Expanded(
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(12),
-                    onTap: () => Navigator.of(context).push<void>(
-                      MaterialPageRoute<void>(
-                        fullscreenDialog: true,
-                        builder: (_) => _NowPlaying(
-                          controller: controller,
-                          onAddToPlaylist: onAddToPlaylist,
-                          onDownload: onDownload,
-                        ),
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        TrackArtwork(
-                          path: track?.artworkPath,
-                          url: playback.offline
-                              ? null
-                              : (track?.artworkUrl ?? sourceItem?.artworkUrl),
-                          size: 42,
-                        ),
-                        const SizedBox(width: 11),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                track?.title ??
-                                    sourceItem?.title ??
-                                    'Đang phát',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w700,
-                                  color: palette.text,
-                                ),
-                              ),
-                              const SizedBox(height: 3),
-                              Text(
-                                playback.error ??
-                                    '${playback.offline ? "Đã tải" : "Trực tuyến"} · ${formatTime(playback.positionMs)}',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  color: playback.error == null
-                                      ? (light ? palette.muted : const Color(0xffa396b2))
-                                      : Theme.of(context).colorScheme.error,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(10, 7, 6, 7),
+          child: Row(
+            children: [
+              Expanded(
+                child: interactive
+                    ? InkWell(
+                        borderRadius: BorderRadius.circular(12),
+                        onTap: onOpen,
+                        child: trackRow,
+                      )
+                    : trackRow,
+              ),
+              IconButton(
+                tooltip: interactive
+                    ? (playback.isPlaying ? 'Tạm dừng' : 'Phát nhạc')
+                    : null,
+                onPressed: interactive ? controller.togglePlay : null,
+                icon: Icon(
+                  playback.isPlaying
+                      ? Icons.pause_rounded
+                      : Icons.play_arrow_rounded,
+                  size: 26,
+                  color: light ? palette.action : const Color(0xfff7edf9),
                 ),
-                IconButton(
-                  tooltip: playback.isPlaying ? 'Tạm dừng' : 'Phát nhạc',
-                  onPressed: controller.togglePlay,
-                  icon: Icon(
-                    playback.isPlaying
-                        ? Icons.pause_rounded
-                        : Icons.play_arrow_rounded,
-                    size: 26,
-                    color: light ? palette.action : const Color(0xfff7edf9),
-                  ),
+              ),
+              IconButton(
+                tooltip: interactive ? 'Bài tiếp' : null,
+                onPressed: interactive && controller.canSkip(1)
+                    ? () => controller.skip(1)
+                    : null,
+                color: light ? palette.action : const Color(0xffb9a8cb),
+                icon: const Icon(
+                  Icons.skip_next_rounded,
+                  size: 24,
                 ),
-                IconButton(
-                  tooltip: 'Bài tiếp',
-                  onPressed: controller.canSkip(1)
-                      ? () => controller.skip(1)
-                      : null,
-                  color: light ? palette.action : const Color(0xffb9a8cb),
-                  icon: const Icon(
-                    Icons.skip_next_rounded,
-                    size: 24,
-                  ),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
-        ],
+        ),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+    final light = Theme.of(context).brightness == Brightness.light;
+
+    return Builder(
+      builder: (cardContext) => LiquidGlassCard(
+        borderRadius: 17,
+        blur: 28,
+        gradient: light
+            ? palette.surfaceGradient
+            : const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Color(0xc9353043),
+                  Color(0xe6252333),
+                  Color(0xdc2b2639),
+                ],
+              ),
+        borderColor: light ? palette.border : const Color(0x36c2b4dd),
+        child: _buildMiniCardBody(
+          cardContext,
+          interactive: true,
+          onOpen: () => _openNowPlaying(cardContext),
+        ),
       ),
     );
   }
@@ -181,6 +427,15 @@ class _NowPlayingState extends State<_NowPlaying> {
   double? _drag, _volume;
   // 0: Đang phát, 1: Danh sách chờ, 2: Lời bài hát (chuẩn Trio Tabs trong App.tsx)
   int _panel = 0;
+  int _panelDirection = 1;
+
+  void _selectPanel(int next) {
+    if (_panel == next) return;
+    setState(() {
+      _panelDirection = next > _panel ? 1 : -1;
+      _panel = next;
+    });
+  }
   LyricsRepository get _lyricsRepo => widget.controller.lyricsRepository;
   LyricsData? _lyrics;
   bool _loadingLyrics = false;
@@ -325,6 +580,7 @@ class _NowPlayingState extends State<_NowPlaying> {
       _syncLyrics(currentTrackId, title, artist, player.durationMs);
 
       const tabTitles = ['Đang phát', 'Tiếp theo', 'Lời bài hát'];
+      final disableAnimations = MediaQuery.disableAnimationsOf(context);
 
       return AnnotatedRegion<SystemUiOverlayStyle>(
         value: SystemUiOverlayStyle.light.copyWith(
@@ -341,7 +597,9 @@ class _NowPlayingState extends State<_NowPlaying> {
                 Positioned.fill(
                   child: ClipRect(
                     child: AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 600),
+                      duration: disableAnimations
+                          ? Duration.zero
+                          : const Duration(milliseconds: 600),
                       child: KeyedSubtree(
                         key: ValueKey(
                           track?.artworkPath ?? artworkUrl ?? 'empty',
@@ -447,12 +705,13 @@ class _NowPlayingState extends State<_NowPlaying> {
                                   for (final (idx, label) in tabTitles.indexed)
                                     Expanded(
                                       child: GestureDetector(
-                                        onTap: () =>
-                                            setState(() => _panel = idx),
+                                        onTap: () => _selectPanel(idx),
                                         child: AnimatedContainer(
-                                          duration: const Duration(
-                                            milliseconds: 220,
-                                          ),
+                                          duration: disableAnimations
+                                              ? Duration.zero
+                                              : const Duration(
+                                                  milliseconds: 220,
+                                                ),
                                           padding: const EdgeInsets.symmetric(
                                             vertical: 10,
                                           ),
@@ -486,42 +745,83 @@ class _NowPlayingState extends State<_NowPlaying> {
                             const SizedBox(height: 22),
 
                             // 3 Chế độ hiển thị của Trio Player
-                            if (_panel == 0)
-                              _buildNowPlayingMainView(
-                                context,
-                                constraints,
-                                controller,
-                                player,
-                                track,
-                                title,
-                                artist,
-                                artworkUrl,
-                                position,
-                                duration,
-                                volume,
-                                preferences,
-                              )
-                            else if (_panel == 1)
-                              _buildNextQueuePanel(
-                                context,
-                                controller,
-                                player,
-                                track,
-                                title,
-                                artist,
-                                artworkUrl,
-                              )
-                            else
-                              _buildLyricsPanel(
-                                context,
-                                constraints,
-                                controller,
-                                player,
-                                track,
-                                title,
-                                artist,
-                                artworkUrl,
+                            AnimatedSwitcher(
+                              duration: disableAnimations
+                                  ? Duration.zero
+                                  : const Duration(milliseconds: 220),
+                              switchInCurve: Curves.easeOutCubic,
+                              switchOutCurve: Curves.easeInCubic,
+                              transitionBuilder: (child, animation) {
+                                if (disableAnimations) return child;
+                                final isIncoming =
+                                    child.key == ValueKey(_panel);
+                                final beginOffset = isIncoming
+                                    ? Offset(0.08 * _panelDirection, 0)
+                                    : Offset(-0.08 * _panelDirection, 0);
+                                return FadeTransition(
+                                  opacity: animation,
+                                  child: SlideTransition(
+                                    position: Tween<Offset>(
+                                      begin: beginOffset,
+                                      end: Offset.zero,
+                                    ).animate(animation),
+                                    child: child,
+                                  ),
+                                );
+                              },
+                              layoutBuilder:
+                                  (currentChild, previousChildren) => Stack(
+                                    alignment: Alignment.topCenter,
+                                    children: [
+                                      for (final previous in previousChildren)
+                                        IgnorePointer(
+                                          child: HeroMode(
+                                            enabled: false,
+                                            child: previous,
+                                          ),
+                                        ),
+                                      ?currentChild,
+                                    ],
+                                  ),
+                              child: KeyedSubtree(
+                                key: ValueKey(_panel),
+                                child: switch (_panel) {
+                                  0 => _buildNowPlayingMainView(
+                                    context,
+                                    constraints,
+                                    controller,
+                                    player,
+                                    track,
+                                    title,
+                                    artist,
+                                    artworkUrl,
+                                    position,
+                                    duration,
+                                    volume,
+                                    preferences,
+                                  ),
+                                  1 => _buildNextQueuePanel(
+                                    context,
+                                    controller,
+                                    player,
+                                    track,
+                                    title,
+                                    artist,
+                                    artworkUrl,
+                                  ),
+                                  _ => _buildLyricsPanel(
+                                    context,
+                                    constraints,
+                                    controller,
+                                    player,
+                                    track,
+                                    title,
+                                    artist,
+                                    artworkUrl,
+                                  ),
+                                },
                               ),
+                            ),
 
                             if (controller.openingSource)
                               const Padding(
@@ -831,7 +1131,7 @@ class _NowPlayingState extends State<_NowPlaying> {
             ),
             IconButton(
               tooltip: 'Lời bài hát',
-              onPressed: () => setState(() => _panel = 2),
+              onPressed: () => _selectPanel(2),
               icon: const Icon(
                 Icons.lyrics_outlined,
                 size: 21,
@@ -840,7 +1140,7 @@ class _NowPlayingState extends State<_NowPlaying> {
             ),
             IconButton(
               tooltip: 'Danh sách chờ',
-              onPressed: () => setState(() => _panel = 1),
+              onPressed: () => _selectPanel(1),
               icon: const Icon(
                 Icons.queue_music_rounded,
                 size: 22,

@@ -358,6 +358,9 @@ class _AppShellState extends State<AppShell> {
                     width: 38,
                     height: 38,
                     fit: BoxFit.cover,
+                    filterQuality: FilterQuality.high,
+                    isAntiAlias: true,
+                    gaplessPlayback: true,
                     errorBuilder: (_, _, _) => const Center(
                       child: EqualizerBars(
                         active: false,
@@ -533,18 +536,9 @@ class _AppShellState extends State<AppShell> {
                 child: SafeArea(
                   top: false,
                   bottom: false,
-                  child: IndexedStack(
+                  child: _AnimatedTabStack(
                     index: _tab,
-                    children: [
-                      for (final (index, page) in pages.indexed)
-                        ExcludeFocus(
-                          excluding: index != _tab,
-                          child: TickerMode(
-                            enabled: index == _tab,
-                            child: page,
-                          ),
-                        ),
-                    ],
+                    children: pages,
                   ),
                 ),
               ),
@@ -553,31 +547,152 @@ class _AppShellState extends State<AppShell> {
         ),
         bottomNavigationBar: SafeArea(
           top: false,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (_music.playback.trackId != null)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: PlayerControls(
-                      controller: _music,
-                      onDownload: _downloadSong,
-                      onAddToPlaylist: _addToPlaylist,
+          child: Builder(
+            builder: (context) {
+              final disableAnimations = MediaQuery.disableAnimationsOf(context);
+              final hasTrack = _music.playback.trackId != null;
+              return Padding(
+                padding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    AnimatedSwitcher(
+                      duration: disableAnimations
+                          ? Duration.zero
+                          : const Duration(milliseconds: 240),
+                      reverseDuration: disableAnimations
+                          ? Duration.zero
+                          : const Duration(milliseconds: 200),
+                      transitionBuilder: (child, animation) {
+                        if (disableAnimations) return child;
+                        final curved = animation.drive(
+                          CurveTween(curve: Curves.easeOutCubic),
+                        );
+                        return SizeTransition(
+                          sizeFactor: curved,
+                          alignment: Alignment.topCenter,
+                          child: FadeTransition(opacity: curved, child: child),
+                        );
+                      },
+                      layoutBuilder: (currentChild, previousChildren) => Stack(
+                        alignment: Alignment.bottomCenter,
+                        children: [
+                          for (final previous in previousChildren)
+                            IgnorePointer(
+                              child: HeroMode(enabled: false, child: previous),
+                            ),
+                          ?currentChild,
+                        ],
+                      ),
+                      child: hasTrack
+                          ? Padding(
+                              key: const ValueKey('mini-player'),
+                              padding: const EdgeInsets.only(bottom: 8),
+                              child: PlayerControls(
+                                controller: _music,
+                                onDownload: _downloadSong,
+                                onAddToPlaylist: _addToPlaylist,
+                              ),
+                            )
+                          : const SizedBox.shrink(
+                              key: ValueKey('mini-player-empty'),
+                            ),
                     ),
-                  ),
-                GlassNavigationBar(
-                  selectedIndex: _tab,
-                  onDestinationSelected: _select,
+                    GlassNavigationBar(
+                      selectedIndex: _tab,
+                      onDestinationSelected: _select,
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              );
+            },
           ),
         ),
       );
     },
   );
+}
+
+class _AnimatedTabStack extends StatefulWidget {
+  const _AnimatedTabStack({
+    required this.index,
+    required this.children,
+  });
+
+  final int index;
+  final List<Widget> children;
+
+  @override
+  State<_AnimatedTabStack> createState() => _AnimatedTabStackState();
+}
+
+class _AnimatedTabStackState extends State<_AnimatedTabStack>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 230),
+    value: 1.0,
+  );
+  double _direction = 1.0;
+
+  @override
+  void didUpdateWidget(covariant _AnimatedTabStack oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.index != oldWidget.index) {
+      _direction = widget.index > oldWidget.index ? 1.0 : -1.0;
+      if (MediaQuery.disableAnimationsOf(context)) {
+        _controller.value = 1.0;
+      } else {
+        _controller.forward(from: 0.0);
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final disableAnimations = MediaQuery.disableAnimationsOf(context);
+    final opacity = disableAnimations
+        ? const AlwaysStoppedAnimation<double>(1.0)
+        : _controller.drive(
+            Tween<double>(begin: 0.45, end: 1.0).chain(
+              CurveTween(curve: Curves.easeOutCubic),
+            ),
+          );
+    final position = disableAnimations
+        ? const AlwaysStoppedAnimation<Offset>(Offset.zero)
+        : _controller.drive(
+            Tween<Offset>(
+              begin: Offset(0.06 * _direction, 0),
+              end: Offset.zero,
+            ).chain(CurveTween(curve: Curves.easeOutCubic)),
+          );
+
+    return FadeTransition(
+      opacity: opacity,
+      child: SlideTransition(
+        position: position,
+        child: IndexedStack(
+          index: widget.index,
+          children: [
+            for (final (i, page) in widget.children.indexed)
+              ExcludeFocus(
+                excluding: i != widget.index,
+                child: TickerMode(
+                  enabled: i == widget.index,
+                  child: page,
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class GlassNavigationBar extends StatelessWidget {
@@ -602,6 +717,7 @@ class GlassNavigationBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final palette = context.palette;
     final light = Theme.of(context).brightness == Brightness.light;
+    final disableAnimations = MediaQuery.disableAnimationsOf(context);
     final unselected = light ? palette.muted : const Color(0xffa7a9bb);
     return LiquidGlassCard(
       borderRadius: 23,
@@ -628,7 +744,9 @@ class GlassNavigationBar extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       AnimatedContainer(
-                        duration: const Duration(milliseconds: 220),
+                        duration: disableAnimations
+                            ? Duration.zero
+                            : const Duration(milliseconds: 220),
                         width: 48,
                         height: 31,
                         decoration: BoxDecoration(

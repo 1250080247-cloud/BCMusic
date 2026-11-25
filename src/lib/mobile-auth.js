@@ -6,8 +6,13 @@ export const mobileProof = (value) => typeof value === 'string' && proofPattern.
 export const hashMobileProof = (value) => createHash('sha256').update(value).digest('base64url');
 export const newMobileCode = () => randomBytes(32).toString('base64url');
 
+const localhostUrlPattern = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/i;
+
 export function mobileSessionCookieName(request, useSecureCookies) {
-  const configured = process.env.NEXTAUTH_URL;
+  const rawConfigured = process.env.NEXTAUTH_URL;
+  const configured = process.env.VERCEL && rawConfigured && localhostUrlPattern.test(rawConfigured)
+    ? ''
+    : rawConfigured;
   const protocol = request.headers.get('x-forwarded-proto') || new URL(request.url).protocol.slice(0, -1);
   const secure = useSecureCookies ?? (configured ? !configured.startsWith('http://') : protocol === 'https');
   return `${secure ? '__Secure-' : ''}next-auth.session-token`;

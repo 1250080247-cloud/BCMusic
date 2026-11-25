@@ -540,4 +540,45 @@ void main() {
       await platform.updates.close();
     },
   );
+
+  testWidgets('genre chips show ✦ star on whichever chip is selected', (
+    tester,
+  ) async {
+    final platform = FakeMusicPlatform();
+    final controller = MusicController(platform);
+    await controller.initialize();
+    final discovery = DiscoveryController(EmptyDiscoveryRepository());
+    await tester.pumpWidget(
+      BCMusicApp(controller: controller, discovery: discovery),
+    );
+    await tester.pumpAndSettle();
+
+    Finder starInChip(String label) => find.descendant(
+      of: find.ancestor(
+        of: find.text(label),
+        matching: find.byType(ChoiceChip),
+      ),
+      matching: find.text('✦'),
+    );
+
+    expect(starInChip('TikTok Remix'), findsOneWidget);
+    expect(starInChip('Lofi'), findsNothing);
+
+    await tester.tap(find.text('Lofi'));
+    await tester.pumpAndSettle();
+
+    expect(starInChip('TikTok Remix'), findsNothing);
+    expect(starInChip('Lofi'), findsOneWidget);
+
+    await tester.tap(find.text('Nhạc Trung'));
+    await tester.pumpAndSettle();
+
+    expect(starInChip('Lofi'), findsNothing);
+    expect(starInChip('Nhạc Trung'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox());
+    controller.dispose();
+    discovery.dispose();
+    await platform.updates.close();
+  });
 }

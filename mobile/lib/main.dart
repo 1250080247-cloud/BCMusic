@@ -9,6 +9,7 @@ import 'app_shell.dart';
 import 'app_theme.dart';
 import 'discovery.dart';
 import 'platform_bridge.dart';
+import 'splash_overlay.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -29,7 +30,13 @@ void main() {
   final controller = MusicController(AndroidMusicPlatform());
   final discovery = DiscoveryController(WebsiteDiscoveryRepository());
   unawaited(controller.initialize());
-  runApp(BCMusicApp(controller: controller, discovery: discovery));
+  runApp(
+    BCMusicApp(
+      controller: controller,
+      discovery: discovery,
+      showSplash: true,
+    ),
+  );
 }
 
 class BCMusicApp extends StatelessWidget {
@@ -39,11 +46,13 @@ class BCMusicApp extends StatelessWidget {
     required this.discovery,
     this.textScaler,
     this.phonePreview = false,
+    this.showSplash = false,
   });
   final MusicController controller;
   final DiscoveryController discovery;
   final TextScaler? textScaler;
   final bool phonePreview;
+  final bool showSplash;
 
   @override
   Widget build(BuildContext context) => ValueListenableBuilder<bool>(
@@ -94,7 +103,10 @@ class BCMusicApp extends StatelessWidget {
           ),
         );
       },
-      home: AppShell(controller: controller, discovery: discovery),
+      home: SplashOverlay(
+        enabled: showSplash,
+        child: AppShell(controller: controller, discovery: discovery),
+      ),
     ),
   );
 }

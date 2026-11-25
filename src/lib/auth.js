@@ -9,12 +9,33 @@ import User from '@/models/User';
 let placeholderHash;
 const dummyHash = () => (placeholderHash ??= bcrypt.hashSync('bcmusic-timing-placeholder', 10));
 
+const LOCALHOST_URL_PATTERN = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/i;
+
+export function normalizeProductionNextAuthUrl(env = process.env) {
+  if (!env?.VERCEL) return env?.NEXTAUTH_URL;
+  const current = typeof env.NEXTAUTH_URL === 'string' ? env.NEXTAUTH_URL.trim() : '';
+  if (current && !LOCALHOST_URL_PATTERN.test(current)) return current;
+  const host = (env.VERCEL_PROJECT_PRODUCTION_URL || env.VERCEL_URL || 'bc-music-gilt.vercel.app')
+    .replace(/^https?:\/\//i, '')
+    .replace(/\/+$/, '');
+  const resolved = `https://${host}`;
+  env.NEXTAUTH_URL = resolved;
+  return resolved;
+}
+
+normalizeProductionNextAuthUrl();
+
 export const authOptions = {
   providers: [
-    // ── Google OAuth ─────────────────────────────────
+    // ── Google OAuth (chỉ dùng quyền đăng nhập cơ bản: openid email profile) ─
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+      authorization: {
+        params: {
+          scope: 'openid email profile',
+        },
+      },
     }),
 
     // ── Username / Password ──────────────────────────
@@ -51,24 +72,39 @@ export const authOptions = {
     // Called on every sign-in attempt
     async signIn({ account, profile }) {
       if (account?.provider === 'google') {
+        const email = typeof profile?.email === 'string' ? profile.email.trim().toLowerCase() : '';
+        if (!email || profile?.email_verified === false) return false;
         try {
           await dbConnect();
-          const existing = await User.findOne({ email: profile.email });
+          const existing = await User.findOne({ email });
           if (!existing) {
             // Auto-create account from Google profile
-            const base = (profile.email.split('@')[0])
+            const rawBase = email
+              .split('@')[0]
               .replace(/[^a-z0-9]/gi, '')
               .toLowerCase()
               .slice(0, 20);
-            const username = base + '_' + Date.now().toString(36).slice(-5);
-            await User.create({
-              username,
-              displayName: profile.name,
-              email: profile.email,
-              image: profile.picture,
-              password: null,
-              provider: 'google',
-            });
+            const base = rawBase.length >= 2 ? rawBase : 'user';
+            const suffix = Date.now().toString(36).slice(-5);
+            const username = `${base}_${suffix}`.slice(0, 30);
+            const displayName = typeof profile?.name === 'string' && profile.name.trim()
+              ? profile.name.trim().slice(0, 50)
+              : username;
+            try {
+              await User.create({
+                username,
+                displayName,
+                email,
+                image: profile.picture || null,
+                password: null,
+                provider: 'google',
+              });
+            } catch (createError) {
+              // Concurrent first sign-in for the same email
+              if (createError?.code !== 11000 || !(await User.findOne({ email }))) {
+                throw createError;
+              }
+            }
           }
           return true;
         } catch {
@@ -98,8 +134,10 @@ export const authOptions = {
 
       // Google login — look up our DB user by email (only on first sign-in when account is present)
       if (account?.provider === 'google') {
+        const email = typeof token.email === 'string' ? token.email.trim().toLowerCase() : '';
+        if (!email) return token;
         await dbConnect();
-        const dbUser = await User.findOne({ email: token.email }).lean();
+        const dbUser = await User.findOne({ email }).lean();
         if (dbUser) {
           const userIdStr = dbUser._id.toString();
           token.userId = userIdStr;

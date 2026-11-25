@@ -35,8 +35,17 @@ function AuthModalDialog({ mode, setMode, onClose }) {
 
   const handleGoogleSignIn = async () => {
     setGoogleLoading(true);
-    await signIn('google', { callbackUrl: window.location.href });
-    // page will redirect, no need to setLoading(false)
+    setError('');
+    try {
+      const res = await signIn('google', { callbackUrl: window.location.href });
+      if (res?.error) {
+        setError('Chưa đăng nhập được bằng Google. Hãy thử lại.');
+        setGoogleLoading(false);
+      }
+    } catch {
+      setError('Không kết nối được tới Google. Hãy thử lại.');
+      setGoogleLoading(false);
+    }
   };
 
   const handleLogin = async (e) => {

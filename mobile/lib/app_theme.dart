@@ -184,7 +184,163 @@ ThemeData bcmusicTheme({bool light = false}) {
         TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600),
       ),
     ),
+    pageTransitionsTheme: const PageTransitionsTheme(
+      builders: {
+        TargetPlatform.android: _GlassSlideFadeTransitionsBuilder(),
+        TargetPlatform.iOS: _GlassSlideFadeTransitionsBuilder(),
+        TargetPlatform.windows: _GlassSlideFadeTransitionsBuilder(),
+        TargetPlatform.macOS: _GlassSlideFadeTransitionsBuilder(),
+        TargetPlatform.linux: _GlassSlideFadeTransitionsBuilder(),
+        TargetPlatform.fuchsia: _GlassSlideFadeTransitionsBuilder(),
+      },
+    ),
   );
+}
+
+class _GlassSlideFadeTransitionsBuilder extends PageTransitionsBuilder {
+  const _GlassSlideFadeTransitionsBuilder();
+
+  @override
+  Duration get transitionDuration => const Duration(milliseconds: 280);
+
+  @override
+  Duration get reverseTransitionDuration => const Duration(milliseconds: 230);
+
+  static final _enterSlide = Tween<Offset>(
+    begin: const Offset(0.22, 0),
+    end: Offset.zero,
+  );
+
+  static final _enterFade = Tween<double>(
+    begin: 0.0,
+    end: 1.0,
+  ).chain(CurveTween(curve: const Interval(0.0, 0.45)));
+
+  static final _exitSlide = Tween<Offset>(
+    begin: Offset.zero,
+    end: const Offset(-0.05, 0),
+  );
+
+  static final _exitDim = Tween<double>(
+    begin: 0.0,
+    end: 0.20,
+  );
+
+  @override
+  Widget buildTransitions<T>(
+    PageRoute<T> route,
+    BuildContext context,
+    Animation<double> animation,
+    Animation<double> secondaryAnimation,
+    Widget child,
+  ) {
+    if (MediaQuery.disableAnimationsOf(context)) return child;
+
+    return _SymmetricThemeCurve(
+      animation: animation,
+      secondaryAnimation: secondaryAnimation,
+      builder: (context, primaryCurved, secondaryCurved) {
+        final primarySlide = _enterSlide.animate(primaryCurved);
+        final primaryFade = _enterFade.animate(primaryCurved);
+        final secondarySlide = _exitSlide.animate(secondaryCurved);
+        final secondaryDim = _exitDim.animate(secondaryCurved);
+
+        final incoming = route.opaque
+            ? FadeTransition(
+                opacity: primaryFade,
+                child: ColoredBox(
+                  color: Theme.of(context).scaffoldBackgroundColor,
+                  child: child,
+                ),
+              )
+            : FadeTransition(opacity: primaryFade, child: child);
+
+        return SlideTransition(
+          position: secondarySlide,
+          child: AnimatedBuilder(
+            animation: secondaryDim,
+            builder: (context, inner) {
+              final dimAlpha = secondaryDim.value;
+              return DecoratedBox(
+                position: DecorationPosition.foreground,
+                decoration: dimAlpha > 0
+                    ? BoxDecoration(
+                        color: Colors.black.withValues(alpha: dimAlpha),
+                      )
+                    : const BoxDecoration(),
+                child: inner,
+              );
+            },
+            child: SlideTransition(
+              position: primarySlide,
+              child: incoming,
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _SymmetricThemeCurve extends StatefulWidget {
+  const _SymmetricThemeCurve({
+    required this.animation,
+    required this.secondaryAnimation,
+    required this.builder,
+  });
+
+  final Animation<double> animation;
+  final Animation<double> secondaryAnimation;
+  final Widget Function(
+    BuildContext context,
+    Animation<double> primaryCurved,
+    Animation<double> secondaryCurved,
+  ) builder;
+
+  @override
+  State<_SymmetricThemeCurve> createState() => _SymmetricThemeCurveState();
+}
+
+class _SymmetricThemeCurveState extends State<_SymmetricThemeCurve> {
+  late CurvedAnimation _primary;
+  late CurvedAnimation _secondary;
+
+  @override
+  void initState() {
+    super.initState();
+    _primary = _make(widget.animation);
+    _secondary = _make(widget.secondaryAnimation);
+  }
+
+  CurvedAnimation _make(Animation<double> parent) => CurvedAnimation(
+    parent: parent,
+    curve: Curves.easeOutCubic,
+    reverseCurve: Curves.easeOutCubic.flipped,
+  );
+
+  @override
+  void didUpdateWidget(covariant _SymmetricThemeCurve oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.animation != oldWidget.animation) {
+      _primary.dispose();
+      _primary = _make(widget.animation);
+    }
+    if (widget.secondaryAnimation != oldWidget.secondaryAnimation) {
+      _secondary.dispose();
+      _secondary = _make(widget.secondaryAnimation);
+    }
+  }
+
+  @override
+  void dispose() {
+    _primary.dispose();
+    _secondary.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) =>
+      widget.builder(context, _primary, _secondary);
 }
 
 /// Tái tạo class `.glass` trong index.css

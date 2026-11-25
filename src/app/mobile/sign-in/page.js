@@ -7,9 +7,16 @@ export const metadata = {
 };
 
 export default async function MobileSignInPage({ searchParams }) {
-  const { state, challenge } = await searchParams;
+  const { state, challenge, error } = await searchParams;
   const proof = /^[A-Za-z0-9_-]{43}$/;
   const valid = typeof state === 'string' && proof.test(state) &&
     typeof challenge === 'string' && proof.test(challenge);
-  return <MobileSignIn state={valid ? state : null} challenge={valid ? challenge : null} />;
+  const oauthError = typeof error === 'string' && error.length <= 64 ? error : '';
+  return (
+    <MobileSignIn
+      state={valid ? state : null}
+      challenge={valid ? challenge : null}
+      oauthError={oauthError}
+    />
+  );
 }
