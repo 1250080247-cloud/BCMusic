@@ -70,8 +70,8 @@ export async function GET(request) {
     const source = url.searchParams.get('source') === 'mobile' ? 'mobile' : 'web';
     const grantParam = url.searchParams.get('grant');
 
-    let userId = await getRequestUserId({ allowGuest: false });
-    if (!userId && source === 'mobile' && mobileProof(grantParam)) {
+    let userId = null;
+    if (source === 'mobile' && mobileProof(grantParam)) {
       await dbConnect();
       const consumed = await YouTubeConnectGrant.findOneAndDelete({
         _id: hashMobileProof(grantParam),
@@ -80,6 +80,9 @@ export async function GET(request) {
       if (consumed?.userId) {
         userId = String(consumed.userId);
       }
+    }
+    if (!userId) {
+      userId = await getRequestUserId({ allowGuest: false });
     }
 
     if (!userId) {
@@ -90,6 +93,17 @@ export async function GET(request) {
     }
 
     const nonce = randomBytes(16).toString('base64url');
+    try {
+      await dbConnect();
+      await YouTubeConnectGrant.create({
+        _id: hashMobileProof(`ytstate:${nonce}`),
+        userId: String(userId),
+        expiresAt: new Date(Date.now() + 10 * 60 * 1000),
+      });
+    } catch {
+      // Fallback to state cookie if DB write for state nonce is unavailable in isolated unit tests.
+    }
+
     const state = signYouTubeState({ userId: String(userId), source, nonce });
     const redirectUri = getYouTubeRedirectUri(request);
     const authUrl = buildYouTubeAuthUrl({ redirectUri, state });
@@ -103,7 +117,7 @@ export async function GET(request) {
       httpOnly: true,
       secure,
       sameSite: 'lax',
-      path: '/api/youtube/callback',
+      path: '/',
       maxAge: 600,
     });
     return response;

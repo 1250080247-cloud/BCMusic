@@ -382,3 +382,99 @@ test('isYouTubeCacheFresh enforces 12-hour TTL and buildCollectionsPayload marks
   assert.equal(payload.playlists[0].isLiked, false);
   assert.equal(payload.playlists[0].readOnly, true);
 });
+
+test('mobile YouTube connect prioritizes mobile grant over browser session and callback verifies server-side nonce without cookie', async () => {
+  const grants = new Map();
+  const YouTubeConnectGrantStub = {
+    create: async (doc) => {
+      grants.set(doc._id, doc);
+      return doc;
+    },
+    findOneAndDelete: (filter) => ({
+      lean: async () => {
+        const hit = grants.get(filter._id) || null;
+        if (!hit) return null;
+        if (filter.userId && hit.userId !== filter.userId) return null;
+        grants.delete(filter._id);
+        return hit;
+      },
+    }),
+  };
+
+  // Android app mints a grant for mobile-user-99.
+  const { POST } = await loadModule('src/app/api/youtube/connect/route.js', {
+    globals: { process: { env: ENV_READY } },
+    stubs: {
+      '@/lib/mongodb': { default: async () => {} },
+      '@/lib/request-user': { getRequestUserId: async () => 'mobile-user-99' },
+      '@/models/SongCache': { default: {} },
+      '@/models/YouTubeConnectGrant': { default: YouTubeConnectGrantStub },
+    },
+  });
+  const postRes = await POST(
+    new Request('https://bc-music-gilt.vercel.app/api/youtube/connect', { method: 'POST' }),
+  );
+  const { url } = await postRes.json();
+
+  // Browser has a DIFFERENT logged-in web session (other-web-user), yet mobile grant must win.
+  const { GET: GET_CONNECT } = await loadModule('src/app/api/youtube/connect/route.js', {
+    globals: { process: { env: ENV_READY } },
+    stubs: {
+      '@/lib/mongodb': { default: async () => {} },
+      '@/lib/request-user': { getRequestUserId: async () => 'other-web-user' },
+      '@/models/SongCache': { default: {} },
+      '@/models/YouTubeConnectGrant': { default: YouTubeConnectGrantStub },
+    },
+  });
+  const connectRes = await GET_CONNECT(new Request(url));
+  assert.equal(connectRes.status, 302);
+  const googleAuthUrl = new URL(connectRes.headers.get('location'));
+  const signedState = googleAuthUrl.searchParams.get('state');
+  assert.ok(signedState);
+
+  // Now simulate callback arriving with NO cookie (dropped by Custom Tabs) — server-side nonce must verify and link mobile-user-99.
+  let savedUserId = null;
+  const { GET: GET_CALLBACK } = await loadModule('src/app/api/youtube/callback/route.js', {
+    globals: {
+      process: { env: ENV_READY },
+      fetch: async (targetUrl) => {
+        const s = String(targetUrl);
+        if (s.includes('oauth2.googleapis.com/token')) {
+          return new Response(
+            JSON.stringify({ access_token: 'ya29.ok', refresh_token: '1//ref', expires_in: 3600 }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          );
+        }
+        return new Response(JSON.stringify({ items: [] }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      },
+    },
+    stubs: {
+      '@/lib/mongodb': { default: async () => {} },
+      '@/models/SongCache': { default: {} },
+      '@/models/YouTubeConnectGrant': { default: YouTubeConnectGrantStub },
+      '@/models/YouTubeConnection': {
+        default: {
+          findOne: async () => null,
+          findOneAndUpdate: async (filter, update) => {
+            savedUserId = filter.userId;
+            return { ...update.$set, async save() {} };
+          },
+          updateOne: async () => {},
+        },
+      },
+    },
+  });
+
+  const cbRes = await GET_CALLBACK(
+    new Request(
+      `https://bc-music-gilt.vercel.app/api/youtube/callback?state=${encodeURIComponent(signedState)}&code=auth-code-123`,
+    ),
+  );
+  assert.equal(cbRes.status, 200);
+  const html = await cbRes.text();
+  assert.equal(savedUserId, 'mobile-user-99');
+  assert.match(html, /app\.bcmusic\.personal:\/\/youtube\/complete\?status=ok/);
+});
