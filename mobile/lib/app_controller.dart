@@ -1,12 +1,28 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
+import 'discovery.dart';
 import 'lyrics.dart';
 import 'models.dart';
 import 'platform_bridge.dart';
+
+class YouTubeForYouSection {
+  const YouTubeForYouSection({
+    required this.id,
+    required this.eyebrow,
+    required this.title,
+    required this.section,
+  });
+
+  final String id;
+  final String eyebrow;
+  final String title;
+  final FeedSection section;
+}
 
 class MusicController extends ChangeNotifier {
   MusicController(this.platform);
@@ -270,6 +286,18 @@ class MusicController extends ChangeNotifier {
       _favoriteSession++;
       _favoriteLoad = null;
       _favoriteIds = null;
+      if (key == null) {
+        youtubeStatus = const YouTubeSyncStatus();
+        youtubeForYouSections = const [];
+        youtubeError = null;
+        _pendingYouTubeConnect = false;
+        youtubeRevision++;
+      } else {
+        unawaited(refreshYouTubeStatus());
+      }
+    } else if (key != null && _pendingYouTubeConnect) {
+      _pendingYouTubeConnect = false;
+      unawaited(refreshYouTubeStatus());
     }
     if (!next.playback.ended) _handledEnd = null;
     if (!openingSource && next.playback.track != null) {
@@ -586,6 +614,294 @@ class MusicController extends ChangeNotifier {
       queueItems: queue,
       playlistArtworkUrls: items.map((item) => item.artworkUrl),
     );
+  }
+
+  Future<void> saveAccountPlaylistOffline(AccountPlaylist playlist) async {
+    final songs = playlist.songs.values.toList();
+    if (songs.isEmpty) return;
+    final createdId = await createEmptyPlaylist(playlist.name);
+    if (createdId != null && createdId.isNotEmpty) {
+      for (final song in songs) {
+        await addSourceToPlaylist(createdId, song.url);
+      }
+      return;
+    }
+    final first = songs.first;
+    await createPlaylist(
+      playlist.name,
+      trackId: deriveTrackId(first.url),
+      url: first.url,
+      enqueueIfMissing: true,
+    );
+    final match = snapshot.playlists
+        .where((item) => item.name == playlist.name)
+        .lastOrNull;
+    if (match != null) {
+      for (final song in songs.skip(1)) {
+        await addSourceToPlaylist(match.id, song.url);
+      }
+    }
+  }
+
+  YouTubeSyncStatus youtubeStatus = const YouTubeSyncStatus();
+  List<YouTubeForYouSection> youtubeForYouSections = const [];
+  bool syncingYouTube = false;
+  bool loadingYouTubeForYou = false;
+  String? youtubeError;
+  int youtubeRevision = 0;
+  bool _pendingYouTubeConnect = false;
+  int _youtubeForYouRequest = 0;
+
+  Future<void> refreshYouTubeStatus() async {
+    final android = platform;
+    if (android is! AndroidMusicPlatform || snapshot.account == null) {
+      if (youtubeStatus.available || youtubeStatus.connected) {
+        youtubeStatus = const YouTubeSyncStatus();
+        youtubeForYouSections = const [];
+        youtubeRevision++;
+        _notify();
+      }
+      return;
+    }
+    try {
+      final raw = await android.getYouTubeStatus();
+      if (_disposed || raw == null || raw.isEmpty) return;
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) return;
+      final next = YouTubeSyncStatus.fromMap(
+        Map<Object?, Object?>.from(decoded),
+      );
+      final changed =
+          next.available != youtubeStatus.available ||
+          next.connected != youtubeStatus.connected ||
+          next.needsReconnect != youtubeStatus.needsReconnect ||
+          next.lastSyncedAt != youtubeStatus.lastSyncedAt ||
+          next.likedCount != youtubeStatus.likedCount ||
+          next.playlistCount != youtubeStatus.playlistCount;
+      youtubeStatus = next;
+      if (!next.connected) {
+        youtubeForYouSections = const [];
+      }
+      if (changed) {
+        youtubeRevision++;
+      }
+      _notify();
+    } on Exception {
+      // Keep app responsive if YouTube status check fails.
+    }
+  }
+
+  Future<bool> connectYouTube() async {
+    final android = platform;
+    if (android is! AndroidMusicPlatform || snapshot.account == null) {
+      return false;
+    }
+    youtubeError = null;
+    _pendingYouTubeConnect = true;
+    _notify();
+    try {
+      await android.startYouTubeConnect();
+      await refreshYouTubeStatus();
+      if (youtubeStatus.connected) {
+        _pendingYouTubeConnect = false;
+        youtubeRevision++;
+        _notify();
+      }
+      return true;
+    } on PlatformException catch (e) {
+      _pendingYouTubeConnect = false;
+      youtubeError = e.message ?? 'Không mở được kết nối YouTube.';
+      _notify();
+      return false;
+    } catch (_) {
+      _pendingYouTubeConnect = false;
+      youtubeError = 'Không mở được kết nối YouTube.';
+      _notify();
+      return false;
+    }
+  }
+
+  Future<bool> syncYouTubeNow() async {
+    final android = platform;
+    if (android is! AndroidMusicPlatform ||
+        snapshot.account == null ||
+        syncingYouTube) {
+      return false;
+    }
+    syncingYouTube = true;
+    youtubeError = null;
+    _notify();
+    try {
+      final raw = await android.syncYouTube();
+      if (!_disposed && raw != null && raw.isNotEmpty) {
+        final decoded = jsonDecode(raw);
+        if (decoded is Map) {
+          youtubeStatus = YouTubeSyncStatus.fromMap(
+            Map<Object?, Object?>.from(decoded),
+          );
+          if (decoded['success'] == false && decoded['message'] is String) {
+            youtubeError = decoded['message'] as String;
+          }
+        }
+      }
+      youtubeForYouSections = const [];
+      youtubeRevision++;
+      return youtubeStatus.connected;
+    } on PlatformException catch (e) {
+      youtubeError = e.message ?? 'Chưa thể đồng bộ YouTube lúc này.';
+      return false;
+    } catch (_) {
+      youtubeError = 'Chưa thể đồng bộ YouTube lúc này.';
+      return false;
+    } finally {
+      syncingYouTube = false;
+      _notify();
+    }
+  }
+
+  Future<bool> disconnectYouTube() async {
+    final android = platform;
+    if (android is! AndroidMusicPlatform ||
+        snapshot.account == null ||
+        syncingYouTube) {
+      return false;
+    }
+    syncingYouTube = true;
+    youtubeError = null;
+    _notify();
+    try {
+      final raw = await android.disconnectYouTube();
+      if (!_disposed && raw != null && raw.isNotEmpty) {
+        final decoded = jsonDecode(raw);
+        if (decoded is Map) {
+          youtubeStatus = YouTubeSyncStatus.fromMap(
+            Map<Object?, Object?>.from(decoded),
+          );
+        } else {
+          youtubeStatus = YouTubeSyncStatus(available: youtubeStatus.available);
+        }
+      } else {
+        youtubeStatus = YouTubeSyncStatus(available: youtubeStatus.available);
+      }
+      youtubeForYouSections = const [];
+      youtubeRevision++;
+      return true;
+    } on PlatformException catch (e) {
+      youtubeError = e.message ?? 'Không thể ngắt kết nối YouTube.';
+      return false;
+    } catch (_) {
+      youtubeError = 'Không thể ngắt kết nối YouTube.';
+      return false;
+    } finally {
+      syncingYouTube = false;
+      _notify();
+    }
+  }
+
+  Future<void> loadYouTubeForYou({bool force = false}) async {
+    final android = platform;
+    if (android is! AndroidMusicPlatform || !youtubeStatus.connected) {
+      youtubeForYouSections = const [];
+      _notify();
+      return;
+    }
+    if (!force && youtubeForYouSections.isNotEmpty && !loadingYouTubeForYou) {
+      return;
+    }
+    final request = ++_youtubeForYouRequest;
+    loadingYouTubeForYou = true;
+    if (youtubeForYouSections.isEmpty) {
+      youtubeForYouSections = const [
+        YouTubeForYouSection(
+          id: 'liked',
+          eyebrow: 'YÊU THÍCH CỦA BẠN',
+          title: 'Nhạc bạn đã thích',
+          section: FeedSection(loading: true),
+        ),
+        YouTubeForYouSection(
+          id: 'taste',
+          eyebrow: 'DỰA TRÊN GU NGHE',
+          title: 'Hợp gu nghe gần đây',
+          section: FeedSection(loading: true),
+        ),
+        YouTubeForYouSection(
+          id: 'subscribed',
+          eyebrow: 'KÊNH BẠN ĐĂNG KÝ',
+          title: 'Từ nghệ sĩ bạn theo dõi',
+          section: FeedSection(loading: true),
+        ),
+      ];
+    }
+    _notify();
+    try {
+      final raw = await android.getYouTubeForYou();
+      if (_disposed || request != _youtubeForYouRequest) return;
+      final decoded = raw == null || raw.isEmpty ? null : jsonDecode(raw);
+      if (decoded is Map && decoded['needsReconnect'] == true) {
+        youtubeStatus = YouTubeSyncStatus(
+          available: youtubeStatus.available,
+          connected: false,
+          needsReconnect: true,
+          lastSyncedAt: youtubeStatus.lastSyncedAt,
+        );
+        youtubeForYouSections = const [];
+        return;
+      }
+      final rows = decoded is Map && decoded['sections'] is List
+          ? decoded['sections'] as List
+          : const [];
+      final parsed = <YouTubeForYouSection>[];
+      for (final row in rows.whereType<Map>()) {
+        final items = row['items'] is List
+            ? DiscoverySong.parseItems({'items': row['items']})
+            : const <DiscoverySong>[];
+        parsed.add(
+          YouTubeForYouSection(
+            id: row['id']?.toString() ?? 'yt_${parsed.length}',
+            eyebrow: row['eyebrow']?.toString() ?? 'TỪ YOUTUBE CỦA BẠN',
+            title: row['title']?.toString() ?? 'Dành cho bạn',
+            section: FeedSection(songs: items, loading: false),
+          ),
+        );
+      }
+      youtubeForYouSections = parsed;
+    } catch (_) {
+      if (_disposed || request != _youtubeForYouRequest) return;
+      youtubeForYouSections = const [
+        YouTubeForYouSection(
+          id: 'liked',
+          eyebrow: 'TỪ YOUTUBE CỦA BẠN',
+          title: 'Nhạc bạn đã thích',
+          section: FeedSection(
+            loading: false,
+            error: 'Chưa tải được gợi ý từ YouTube.',
+          ),
+        ),
+        YouTubeForYouSection(
+          id: 'taste',
+          eyebrow: 'DỰA TRÊN GU NGHE',
+          title: 'Hợp gu nghe gần đây',
+          section: FeedSection(
+            loading: false,
+            error: 'Chưa tải được gợi ý từ YouTube.',
+          ),
+        ),
+        YouTubeForYouSection(
+          id: 'subscribed',
+          eyebrow: 'KÊNH BẠN ĐĂNG KÝ',
+          title: 'Từ nghệ sĩ bạn theo dõi',
+          section: FeedSection(
+            loading: false,
+            error: 'Chưa tải được gợi ý từ YouTube.',
+          ),
+        ),
+      ];
+    } finally {
+      if (!_disposed && request == _youtubeForYouRequest) {
+        loadingYouTubeForYou = false;
+        _notify();
+      }
+    }
   }
 
   Future<void> deletePlaylist(String id, {bool removeDownloads = false}) async {

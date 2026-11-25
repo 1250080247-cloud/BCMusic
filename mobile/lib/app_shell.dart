@@ -300,6 +300,10 @@ class _AppShellState extends State<AppShell> {
               ? platform.spectrum
               : null,
           online: _music.snapshot.networkAvailable,
+          youtubeConnected: _music.youtubeStatus.connected,
+          youtubeForYouSections: _music.youtubeForYouSections,
+          onLoadYouTubeForYou: () => _music.loadYouTubeForYou(),
+          onRefreshYouTubeForYou: () => _music.loadYouTubeForYou(force: true),
           onLibrary: () => _select(_library),
           onSong: _song,
           onPlay: _playSong,

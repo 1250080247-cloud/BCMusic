@@ -171,12 +171,14 @@ class MainActivity : FlutterActivity(), EventChannel.StreamHandler {
         super.onCreate(savedInstanceState)
         consumeShare(intent)
         consumeAccountLink(intent)
+        consumeYouTubeLink(intent)
     }
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
         consumeShare(intent)
         consumeAccountLink(intent)
+        consumeYouTubeLink(intent)
     }
     private fun consumeShare(intent: Intent?) {
         if (intent?.action == Intent.ACTION_SEND && intent.type == "text/plain") {
@@ -204,6 +206,20 @@ class MainActivity : FlutterActivity(), EventChannel.StreamHandler {
             } catch (error: Exception) {
                 library.accountError = (error as? SourceFailure)?.message ?: "Chưa kết nối được tài khoản Google."
             }
+            library.emit()
+        }
+    }
+
+    private fun consumeYouTubeLink(intent: Intent?) {
+        val uri = intent?.data ?: return
+        if (intent.action != Intent.ACTION_VIEW || uri.scheme != "app.bcmusic.personal" ||
+            uri.host != "youtube" || uri.path != "/complete") return
+        val status = uri.getQueryParameter("status")
+        intent.data = null
+        intent.action = Intent.ACTION_MAIN
+        scope.launch {
+            library.awaitReady()
+            library.accountError = if (status == "ok") null else "Chưa hoàn tất kết nối YouTube. Hãy thử lại."
             library.emit()
         }
     }
@@ -598,6 +614,25 @@ class MainActivity : FlutterActivity(), EventChannel.StreamHandler {
                     }
                     "getProfileCollections" -> {
                         result.success(withContext(Dispatchers.IO) { library.account.profileCollections() })
+                    }
+                    "getYouTubeStatus" -> {
+                        result.success(withContext(Dispatchers.IO) { library.account.youtubeStatus() })
+                    }
+                    "startYouTubeConnect" -> {
+                        library.awaitReady()
+                        library.accountError = null
+                        val browser = withContext(Dispatchers.IO) { library.account.startYouTubeConnect() }
+                        CustomTabsIntent.Builder().build().launchUrl(this@MainActivity, Uri.parse(browser))
+                        result.success(null)
+                    }
+                    "syncYouTube" -> {
+                        result.success(withContext(Dispatchers.IO) { library.account.syncYouTube() })
+                    }
+                    "disconnectYouTube" -> {
+                        result.success(withContext(Dispatchers.IO) { library.account.disconnectYouTube() })
+                    }
+                    "getYouTubeForYou" -> {
+                        result.success(withContext(Dispatchers.IO) { library.account.youtubeForYou() })
                     }
                     "getFavoriteIds" -> result.success(withContext(Dispatchers.IO) { library.account.favoriteIds() })
                     "setFavorite" -> {

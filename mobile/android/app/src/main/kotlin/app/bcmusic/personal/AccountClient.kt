@@ -213,8 +213,87 @@ internal class AccountClient(
         val (account, jar) = activeSession()
         val favorites = collection(jar, "/api/favorites")
         val playlists = collection(jar, "/api/playlist")
+        val mergedPlaylists = JSONArray()
+        try {
+            val (ytStatus, ytData) = request(jar, "/api/youtube/collections")
+            if (ytStatus == 200 && ytData.optBoolean("connected")) {
+                ytData.optJSONObject("likedPlaylist")?.let { mergedPlaylists.put(it) }
+                val ytPlaylists = ytData.optJSONArray("playlists")
+                if (ytPlaylists != null) {
+                    for (i in 0 until ytPlaylists.length()) {
+                        ytPlaylists.optJSONObject(i)?.let { mergedPlaylists.put(it) }
+                    }
+                }
+            }
+        } catch (_: Exception) {
+            // Keep BCMusic collections available if YouTube sync is unavailable.
+        }
+        for (i in 0 until playlists.length()) {
+            playlists.optJSONObject(i)?.let { mergedPlaylists.put(it) }
+        }
         storeSession(account, jar)
-        return JSONObject().put("favorites", favorites).put("playlists", playlists).toString()
+        return JSONObject().put("favorites", favorites).put("playlists", mergedPlaylists).toString()
+    }
+
+    @Synchronized fun youtubeStatus(): String {
+        if (profile == null) {
+            return JSONObject().put("available", false).put("connected", false).put("needsReconnect", false).toString()
+        }
+        val (account, jar) = activeSession()
+        val (status, response) = request(jar, "/api/youtube/status")
+        if (status == 401) throw SourceFailure("SESSION", "Phiên đã hết hạn. Hãy đăng nhập lại.")
+        if (status != 200) throw SourceFailure("YOUTUBE_SYNC", "Chưa kiểm tra được trạng thái YouTube.")
+        storeSession(account, jar)
+        return response.toString()
+    }
+
+    @Synchronized fun startYouTubeConnect(): String {
+        val (account, jar) = activeSession()
+        val (status, response) = request(jar, "/api/youtube/connect", jsonBody(JSONObject()))
+        if (status == 401) throw SourceFailure("SESSION", "Phiên đã hết hạn. Hãy đăng nhập lại.")
+        if (status == 503) throw SourceFailure("YOUTUBE_SYNC", "Tính năng đồng bộ YouTube chưa được bật trên máy chủ.")
+        val url = response.optString("url")
+        if (status != 200 || !response.optBoolean("success") || !url.startsWith("${origin}api/youtube/connect")) {
+            throw SourceFailure("YOUTUBE_SYNC", "Chưa mở được liên kết kết nối YouTube.")
+        }
+        storeSession(account, jar)
+        return url
+    }
+
+    @Synchronized fun syncYouTube(): String {
+        val (account, jar) = activeSession()
+        val (status, response) = request(jar, "/api/youtube/sync", jsonBody(JSONObject()), allowRateLimit = true)
+        if (status == 401) throw SourceFailure("SESSION", "Phiên đã hết hạn. Hãy đăng nhập lại.")
+        if (status == 429) {
+            val msg = response.optString("message").ifBlank { "Bạn chỉ có thể đồng bộ tối đa 3 lần mỗi giờ." }
+            throw SourceFailure("RATE_LIMIT", msg)
+        }
+        if (status != 200) {
+            val msg = response.optString("message").ifBlank { "Chưa thể đồng bộ YouTube lúc này." }
+            throw SourceFailure("YOUTUBE_SYNC", msg)
+        }
+        storeSession(account, jar)
+        return response.toString()
+    }
+
+    @Synchronized fun disconnectYouTube(): String {
+        val (account, jar) = activeSession()
+        val (status, response) = request(jar, "/api/youtube/disconnect", jsonBody(JSONObject()))
+        if (status == 401) throw SourceFailure("SESSION", "Phiên đã hết hạn. Hãy đăng nhập lại.")
+        if (status != 200 || !response.optBoolean("success")) {
+            throw SourceFailure("YOUTUBE_SYNC", "Chưa ngắt kết nối YouTube được.")
+        }
+        storeSession(account, jar)
+        return response.toString()
+    }
+
+    @Synchronized fun youtubeForYou(): String {
+        val (account, jar) = activeSession()
+        val (status, response) = request(jar, "/api/youtube/for-you")
+        if (status == 401) throw SourceFailure("SESSION", "Phiên đã hết hạn. Hãy đăng nhập lại.")
+        if (status != 200) throw SourceFailure("YOUTUBE_SYNC", "Chưa tải được gợi ý YouTube.")
+        storeSession(account, jar)
+        return response.toString()
     }
 
     private fun collection(jar: AccountCookies, path: String): JSONArray {
@@ -319,7 +398,8 @@ internal class AccountClient(
     }
 
     private fun request(jar: AccountCookies, path: String, body: RequestBody? = null,
-        delete: Boolean = false, query: Pair<String, String>? = null): Pair<Int, JSONObject> {
+        delete: Boolean = false, query: Pair<String, String>? = null,
+        allowRateLimit: Boolean = false): Pair<Int, JSONObject> {
         val url = origin.newBuilder().encodedPath(path).apply {
             if (query != null) addQueryParameter(query.first, query.second)
         }.build()
@@ -336,7 +416,7 @@ internal class AccountClient(
                 source?.request(maxBytes + 1)
                 if (source != null && source.buffer.size > maxBytes) throw IOException("Account response too large")
                 val data = source?.readUtf8()?.let { runCatching { JSONObject(it) }.getOrNull() } ?: JSONObject()
-                if (response.code >= 500 || response.code == 429)
+                if (response.code >= 500 || (response.code == 429 && !allowRateLimit))
                     throw SourceFailure("ACCOUNT_NETWORK", "Máy chủ tài khoản đang bận. Hãy thử lại sau.")
                 return response.code to data
             }

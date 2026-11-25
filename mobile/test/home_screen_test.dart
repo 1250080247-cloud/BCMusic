@@ -558,11 +558,29 @@ void main() {
         of: find.text(label),
         matching: find.byType(ChoiceChip),
       ),
-      matching: find.text('✦'),
+      matching: find.byKey(const ValueKey('genre-star')),
     );
 
     expect(starInChip('TikTok Remix'), findsOneWidget);
     expect(starInChip('Lofi'), findsNothing);
+    // Selected chip must keep the same height as unselected chips.
+    final selectedHeight = tester
+        .getSize(
+          find.ancestor(
+            of: find.text('TikTok Remix'),
+            matching: find.byType(ChoiceChip),
+          ),
+        )
+        .height;
+    final unselectedHeight = tester
+        .getSize(
+          find.ancestor(
+            of: find.text('Lofi'),
+            matching: find.byType(ChoiceChip),
+          ),
+        )
+        .height;
+    expect(selectedHeight, unselectedHeight);
 
     await tester.tap(find.text('Lofi'));
     await tester.pumpAndSettle();

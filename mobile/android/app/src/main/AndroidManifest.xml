@@ -45,6 +45,12 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="app.bcmusic.personal" android:host="account" android:path="/complete" />
             </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="app.bcmusic.personal" android:host="youtube" android:path="/complete" />
+            </intent-filter>
         </activity>
         <service android:name=".MusicPlaybackService" android:exported="true"
             android:foregroundServiceType="mediaPlayback">

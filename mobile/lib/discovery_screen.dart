@@ -3,6 +3,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import 'app_controller.dart' show YouTubeForYouSection;
 import 'app_theme.dart';
 import 'discovery.dart';
 import 'models.dart';
@@ -32,6 +33,10 @@ class DiscoveryScreen extends StatelessWidget {
     this.isPlaying = false,
     this.online = true,
     this.motion = true,
+    this.youtubeConnected = false,
+    this.youtubeForYouSections = const [],
+    this.onLoadYouTubeForYou,
+    this.onRefreshYouTubeForYou,
   });
   final DiscoveryController controller;
   final DiscoveryTrackAction onTrackAction;
@@ -41,203 +46,330 @@ class DiscoveryScreen extends StatelessWidget {
   final Stream<List<double>>? spectrum;
   final Widget? discArtwork;
   final bool online, motion, isPlaying;
+  final bool youtubeConnected;
+  final List<YouTubeForYouSection> youtubeForYouSections;
+  final Future<void> Function()? onLoadYouTubeForYou;
+  final Future<void> Function()? onRefreshYouTubeForYou;
+
+  static const _defaultYouTubeSections = [
+    YouTubeForYouSection(
+      id: 'liked',
+      eyebrow: 'YÊU THÍCH CỦA BẠN',
+      title: 'Nhạc bạn đã thích',
+      section: FeedSection(loading: true),
+    ),
+    YouTubeForYouSection(
+      id: 'taste',
+      eyebrow: 'DỰA TRÊN GU NGHE',
+      title: 'Hợp gu nghe gần đây',
+      section: FeedSection(loading: true),
+    ),
+    YouTubeForYouSection(
+      id: 'subscribed',
+      eyebrow: 'KÊNH BẠN ĐĂNG KÝ',
+      title: 'Từ nghệ sĩ bạn theo dõi',
+      section: FeedSection(loading: true),
+    ),
+  ];
 
   @override
-  Widget build(BuildContext context) => RefreshIndicator(
-    onRefresh: () => controller.selectGenre(controller.genreIndex),
-    child: CustomScrollView(
-      slivers: [
-        SliverPadding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 130),
-          sliver: SliverList.list(
-            children: [
-              ListeningHero(
-                motion: motion,
-                discArtwork: discArtwork,
-                isPlaying: isPlaying,
-                spectrum: spectrum,
-                onPlay: controller.sections.first.songs.isEmpty
-                    ? null
-                    : () => onPlay(
-                        controller.sections.first.songs.first,
-                        controller.sections.first.songs,
-                      ),
-              ),
-              const SizedBox(height: 18),
-              if (!online) ...[
-                TextButton.icon(
-                  onPressed: onLibrary,
-                  icon: const Icon(Icons.offline_pin_rounded),
-                  label: const Text('Đang offline · Mở các bài đã tải'),
+  Widget build(BuildContext context) {
+    final showForYou = youtubeConnected && controller.forYouSelected;
+    final forYouSections = youtubeForYouSections.isNotEmpty
+        ? youtubeForYouSections
+        : _defaultYouTubeSections;
+    final heroSongs = showForYou
+        ? (forYouSections
+                .where((entry) => entry.section.songs.isNotEmpty)
+                .firstOrNull
+                ?.section
+                .songs ??
+            const <DiscoverySong>[])
+        : controller.sections.first.songs;
+
+    return RefreshIndicator(
+      onRefresh: () => showForYou
+          ? (onRefreshYouTubeForYou?.call() ?? Future.value())
+          : controller.selectGenre(controller.genreIndex),
+      child: CustomScrollView(
+        slivers: [
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 130),
+            sliver: SliverList.list(
+              children: [
+                ListeningHero(
+                  motion: motion,
+                  discArtwork: discArtwork,
+                  isPlaying: isPlaying,
+                  spectrum: spectrum,
+                  onPlay: heroSongs.isEmpty
+                      ? null
+                      : () => onPlay(heroSongs.first, heroSongs),
                 ),
-                const SizedBox(height: 12),
-              ],
-              SizedBox(
-                height: 44,
-                child: ListView.separated(
-                  scrollDirection: Axis.horizontal,
-                  itemCount: musicGenres.length,
-                  separatorBuilder: (_, _) => const SizedBox(width: 8),
-                  itemBuilder: (context, index) {
-                    final selected = controller.genreIndex == index;
-                    final palette = context.palette;
-                    final disableAnimations =
-                        MediaQuery.disableAnimationsOf(context);
-                    final starDuration = disableAnimations
-                        ? Duration.zero
-                        : const Duration(milliseconds: 180);
-                    return ChoiceChip(
-                      showCheckmark: false,
-                      backgroundColor: palette.raised,
-                      selectedColor: palette.selection,
-                      label: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          AnimatedSize(
-                            duration: starDuration,
-                            curve: Curves.easeOutCubic,
-                            child: AnimatedSwitcher(
+                const SizedBox(height: 18),
+                if (!online) ...[
+                  TextButton.icon(
+                    onPressed: onLibrary,
+                    icon: const Icon(Icons.offline_pin_rounded),
+                    label: const Text('Đang offline · Mở các bài đã tải'),
+                  ),
+                  const SizedBox(height: 12),
+                ],
+                SizedBox(
+                  height: 44,
+                  child: ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    itemCount: musicGenres.length + (youtubeConnected ? 1 : 0),
+                    separatorBuilder: (_, _) => const SizedBox(width: 8),
+                    itemBuilder: (context, index) {
+                      final isForYouChip = youtubeConnected && index == 0;
+                      final genreIdx = youtubeConnected ? index - 1 : index;
+                      final selected = isForYouChip
+                          ? showForYou
+                          : (!showForYou && controller.genreIndex == genreIdx);
+                      final label = isForYouChip
+                          ? 'Dành cho bạn'
+                          : musicGenres[genreIdx].label;
+                      final palette = context.palette;
+                      final disableAnimations =
+                          MediaQuery.disableAnimationsOf(context);
+                      final starDuration = disableAnimations
+                          ? Duration.zero
+                          : const Duration(milliseconds: 180);
+                      return ChoiceChip(
+                        showCheckmark: false,
+                        backgroundColor: palette.raised,
+                        selectedColor: palette.selection,
+                        label: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            TweenAnimationBuilder<double>(
+                              tween: Tween<double>(end: selected ? 1.0 : 0.0),
                               duration: starDuration,
-                              switchInCurve: Curves.easeOutBack,
-                              switchOutCurve: Curves.easeInCubic,
-                              transitionBuilder: (child, animation) =>
-                                  FadeTransition(
-                                    opacity: animation,
-                                    child: ScaleTransition(
-                                      scale: animation,
-                                      child: child,
+                              curve: Curves.easeOutCubic,
+                              builder: (context, value, child) {
+                                if (value <= 0.001) {
+                                  return const SizedBox.shrink();
+                                }
+                                return ClipRect(
+                                  child: Align(
+                                    alignment: AlignmentDirectional.centerStart,
+                                    widthFactor: value,
+                                    heightFactor: 1.0,
+                                    child: Opacity(
+                                      opacity: value.clamp(0.0, 1.0),
+                                      child: Transform.scale(
+                                        scale: 0.72 + 0.28 * value,
+                                        child: child,
+                                      ),
                                     ),
                                   ),
-                              child: selected
-                                  ? const Padding(
-                                      key: ValueKey('genre-star'),
-                                      padding: EdgeInsets.only(right: 5),
-                                      child: Text('✦'),
-                                    )
-                                  : const SizedBox.shrink(
-                                      key: ValueKey('genre-star-none'),
+                                );
+                              },
+                              child: Padding(
+                                key: const ValueKey('genre-star'),
+                                padding: const EdgeInsets.only(right: 5),
+                                child: SizedBox(
+                                  width: 11,
+                                  height: 11,
+                                  child: CustomPaint(
+                                    painter: _SparkleStarPainter(
+                                      palette.action,
                                     ),
+                                  ),
+                                ),
+                              ),
                             ),
-                          ),
-                          Text(musicGenres[index].label),
-                        ],
-                      ),
-                      labelStyle: TextStyle(
-                        color: selected ? palette.action : palette.text,
-                        fontWeight: selected
-                            ? FontWeight.w700
-                            : FontWeight.w500,
-                      ),
-                      selected: selected,
-                      onSelected: (_) => controller.selectGenre(index),
-                    );
-                  },
+                            Text(label),
+                          ],
+                        ),
+                        labelStyle: TextStyle(
+                          color: selected ? palette.action : palette.text,
+                          fontWeight: selected
+                              ? FontWeight.w700
+                              : FontWeight.w500,
+                        ),
+                        selected: selected,
+                        onSelected: (_) {
+                          if (isForYouChip) {
+                            controller.selectForYou();
+                            unawaited(
+                              onLoadYouTubeForYou?.call() ?? Future.value(),
+                            );
+                          } else {
+                            controller.selectGenre(genreIdx);
+                          }
+                        },
+                      );
+                    },
+                  ),
                 ),
-              ),
-              const SizedBox(height: 22),
-              for (var index = 0; index < 3; index++) ...[
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      [
-                        'ĐANG ĐƯỢC YÊU THÍCH',
-                        'GIAI ĐIỆU NỔI BẬT',
-                        'MỚI PHÁT HÀNH',
-                      ][index],
-                      style: const TextStyle(
-                        fontSize: 9.5,
-                        letterSpacing: 1.6,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xff7a758e),
-                      ),
-                    ),
-                    const SizedBox(height: 5),
-                    Row(
+                const SizedBox(height: 22),
+                if (showForYou)
+                  for (final entry in forYouSections) ...[
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Flexible(
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Flexible(
-                                child: Text(
-                                  [
-                                    'Top thịnh hành',
-                                    'Xem nhiều nhất',
-                                    'Mới nhất',
-                                  ][index],
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                    fontSize: 20,
-                                    fontWeight: FontWeight.w700,
-                                    letterSpacing: -0.5,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 7),
-                              Container(
-                                width: 6,
-                                height: 6,
-                                decoration: const BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  color: Color(0xffc4acee),
-                                ),
-                              ),
-                            ],
+                        Text(
+                          entry.eyebrow,
+                          style: const TextStyle(
+                            fontSize: 9.5,
+                            letterSpacing: 1.6,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xff7a758e),
                           ),
                         ),
-                        const SizedBox(width: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 9,
-                            vertical: 3,
-                          ),
-                          decoration: BoxDecoration(
-                            border: Border.all(color: context.palette.border),
-                            borderRadius: BorderRadius.circular(99),
-                          ),
-                          child: Text(
-                            musicGenres[controller.genreIndex].label,
-                            style: TextStyle(
-                              fontSize: 10.5,
-                              color: context.palette.muted,
+                        const SizedBox(height: 5),
+                        Row(
+                          children: [
+                            Flexible(
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Flexible(
+                                    child: Text(
+                                      entry.title,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        fontSize: 20,
+                                        fontWeight: FontWeight.w700,
+                                        letterSpacing: -0.5,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 7),
+                                  Container(
+                                    width: 6,
+                                    height: 6,
+                                    decoration: const BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      color: Color(0xffff6b8b),
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
-                          ),
+                          ],
                         ),
                       ],
                     ),
-                  ],
-                ),
-                const SizedBox(height: 14),
-                if (index == 0)
-                  FeedCarousel(
-                    section: controller.sections[index],
-                    ranked: true,
-                    onSong: onSong,
-                    onPlay: onPlay,
-                    onRetry: () =>
-                        controller.selectGenre(controller.genreIndex),
-                  )
+                    const SizedBox(height: 14),
+                    FeedCarousel(
+                      section: entry.section,
+                      ranked: false,
+                      onSong: onSong,
+                      onPlay: onPlay,
+                      onRetry: () =>
+                          onRefreshYouTubeForYou?.call() ?? Future.value(),
+                    ),
+                    const SizedBox(height: 26),
+                  ]
                 else
-                  FeedRows(
-                    key: ValueKey((controller.genreIndex, index)),
-                    section: controller.sections[index],
-                    ranked: index == 1,
-                    onTrackAction: onTrackAction,
-                    onDownload: onDownload,
-                    onPlay: onPlay,
-                    onRetry: () =>
-                        controller.selectGenre(controller.genreIndex),
-                  ),
-                const SizedBox(height: 26),
+                  for (var index = 0; index < 3; index++) ...[
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          [
+                            'ĐANG ĐƯỢC YÊU THÍCH',
+                            'GIAI ĐIỆU NỔI BẬT',
+                            'MỚI PHÁT HÀNH',
+                          ][index],
+                          style: const TextStyle(
+                            fontSize: 9.5,
+                            letterSpacing: 1.6,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xff7a758e),
+                          ),
+                        ),
+                        const SizedBox(height: 5),
+                        Row(
+                          children: [
+                            Flexible(
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Flexible(
+                                    child: Text(
+                                      [
+                                        'Top thịnh hành',
+                                        'Xem nhiều nhất',
+                                        'Mới nhất',
+                                      ][index],
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        fontSize: 20,
+                                        fontWeight: FontWeight.w700,
+                                        letterSpacing: -0.5,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 7),
+                                  Container(
+                                    width: 6,
+                                    height: 6,
+                                    decoration: const BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      color: Color(0xffc4acee),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 9,
+                                vertical: 3,
+                              ),
+                              decoration: BoxDecoration(
+                                border: Border.all(color: context.palette.border),
+                                borderRadius: BorderRadius.circular(99),
+                              ),
+                              child: Text(
+                                musicGenres[controller.genreIndex].label,
+                                style: TextStyle(
+                                  fontSize: 10.5,
+                                  color: context.palette.muted,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+                    if (index == 0)
+                      FeedCarousel(
+                        section: controller.sections[index],
+                        ranked: true,
+                        onSong: onSong,
+                        onPlay: onPlay,
+                        onRetry: () =>
+                            controller.selectGenre(controller.genreIndex),
+                      )
+                    else
+                      FeedRows(
+                        key: ValueKey((controller.genreIndex, index)),
+                        section: controller.sections[index],
+                        ranked: index == 1,
+                        onTrackAction: onTrackAction,
+                        onDownload: onDownload,
+                        onPlay: onPlay,
+                        onRetry: () =>
+                            controller.selectGenre(controller.genreIndex),
+                      ),
+                    const SizedBox(height: 26),
+                  ],
               ],
-            ],
+            ),
           ),
-        ),
-      ],
-    ),
-  );
+        ],
+      ),
+    );
+  }
 }
 
 class ListeningHero extends StatelessWidget {
@@ -1198,4 +1330,29 @@ class _SearchScreenState extends State<SearchScreen> {
       ],
     );
   }
+}
+
+class _SparkleStarPainter extends CustomPainter {
+  const _SparkleStarPainter(this.color);
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final w = size.width;
+    final h = size.height;
+    final cx = w / 2;
+    final cy = h / 2;
+    final path = Path()
+      ..moveTo(cx, 0)
+      ..quadraticBezierTo(cx, cy, w, cy)
+      ..quadraticBezierTo(cx, cy, cx, h)
+      ..quadraticBezierTo(cx, cy, 0, cy)
+      ..quadraticBezierTo(cx, cy, cx, 0)
+      ..close();
+    canvas.drawPath(path, Paint()..color = color);
+  }
+
+  @override
+  bool shouldRepaint(_SparkleStarPainter oldDelegate) =>
+      oldDelegate.color != color;
 }

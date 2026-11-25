@@ -184,6 +184,115 @@ class _PreviewPlatform extends AndroidMusicPlatform {
         ),
       };
   int _playlistSequence = 3;
+  bool _ytConnected = true;
+  bool _ytNeedsReconnect = false;
+  DateTime _ytLastSyncedAt = DateTime.now().subtract(
+    const Duration(minutes: 18),
+  );
+
+  Map<String, Object?> _previewSongMap(DiscoverySong song) => {
+    'id': song.id,
+    'title': song.title,
+    'artist': song.artist,
+    'sourceUrl': song.sourceUrl,
+    'thumbnail': song.thumbnail,
+    'durationSeconds': song.durationMs ~/ 1000,
+  };
+
+  @override
+  Future<LocalPlaylist> createNamedPlaylist(String name) async {
+    final id = '${++_playlistSequence}';
+    final playlist = LocalPlaylist(id: id, name: name);
+    _playlists[id] = playlist;
+    _updates.add(_state);
+    return playlist;
+  }
+
+  @override
+  Future<String?> getYouTubeStatus() async => jsonEncode({
+    'available': true,
+    'connected': _ytConnected,
+    'needsReconnect': _ytNeedsReconnect,
+    'lastSyncedAt': _ytConnected ? _ytLastSyncedAt.toIso8601String() : null,
+    'likedCount': _ytConnected ? _songs.length : 0,
+    'playlistCount': _ytConnected ? 2 : 0,
+  });
+
+  @override
+  Future<void> startYouTubeConnect() async {
+    _ytConnected = true;
+    _ytNeedsReconnect = false;
+    _ytLastSyncedAt = DateTime.now();
+    _updates.add(_state);
+  }
+
+  @override
+  Future<String?> syncYouTube() async {
+    _ytConnected = true;
+    _ytNeedsReconnect = false;
+    _ytLastSyncedAt = DateTime.now();
+    return jsonEncode({
+      'success': true,
+      'available': true,
+      'connected': true,
+      'needsReconnect': false,
+      'lastSyncedAt': _ytLastSyncedAt.toIso8601String(),
+      'likedCount': _songs.length,
+      'playlistCount': 2,
+    });
+  }
+
+  @override
+  Future<String?> disconnectYouTube() async {
+    _ytConnected = false;
+    _ytNeedsReconnect = false;
+    return jsonEncode({
+      'success': true,
+      'available': true,
+      'connected': false,
+      'needsReconnect': false,
+      'lastSyncedAt': null,
+      'likedCount': 0,
+      'playlistCount': 0,
+    });
+  }
+
+  @override
+  Future<String?> getYouTubeForYou() async {
+    if (!_ytConnected) {
+      return jsonEncode({
+        'connected': false,
+        'needsReconnect': _ytNeedsReconnect,
+        'sections': const [],
+      });
+    }
+    return jsonEncode({
+      'connected': true,
+      'needsReconnect': false,
+      'sections': [
+        {
+          'id': 'liked',
+          'eyebrow': 'YÊU THÍCH CỦA BẠN',
+          'title': 'Nhạc bạn đã thích',
+          'items': _songs.map(_previewSongMap).toList(),
+        },
+        {
+          'id': 'taste',
+          'eyebrow': 'DỰA TRÊN GU NGHE',
+          'title': 'Hợp gu nghe gần đây',
+          'items': _songs.reversed.map(_previewSongMap).toList(),
+        },
+        {
+          'id': 'subscribed',
+          'eyebrow': 'KÊNH BẠN ĐĂNG KÝ',
+          'title': 'Từ nghệ sĩ bạn theo dõi',
+          'items': [_songs[3], _songs[4], _songs[0], _songs[1]]
+              .map(_previewSongMap)
+              .toList(),
+        },
+      ],
+    });
+  }
 
   AccountProfile? _account = const AccountProfile(
     name: 'An Nguyễn',
@@ -374,10 +483,38 @@ class _PreviewPlatform extends AndroidMusicPlatform {
   Future<String?> getProfileCollections() async => jsonEncode({
     'favorites': _favorites.values.toList().reversed.toList(),
     'playlists': [
+      if (_ytConnected) ...[
+        {
+          'id': 'yt_liked',
+          'name': 'Nhạc đã thích',
+          'source': 'youtube',
+          'isLiked': true,
+          'readOnly': true,
+          'songs': _songs.map(_previewSongMap).toList(),
+        },
+        {
+          'id': 'yt_pl_night',
+          'name': 'Đêm muộn YouTube',
+          'source': 'youtube',
+          'isLiked': false,
+          'readOnly': true,
+          'songs': _songs.take(4).map(_previewSongMap).toList(),
+        },
+        {
+          'id': 'yt_pl_indie',
+          'name': 'Indie Việt chọn lọc',
+          'source': 'youtube',
+          'isLiked': false,
+          'readOnly': true,
+          'songs': _songs.skip(2).take(4).map(_previewSongMap).toList(),
+        },
+      ],
       for (final entry in _webPlaylists.entries)
         {
           'id': entry.key,
           'name': entry.value.name,
+          'source': 'bcmusic',
+          'isLiked': false,
           'songs': entry.value.songs.values.toList(),
         },
     ],

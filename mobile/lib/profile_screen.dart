@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -24,6 +25,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   String? _pickedImage, _error;
   bool _editing = false, _saving = false, _picking = false;
   late Future<Map<String, dynamic>> _collections;
+  int _youtubeRevision = 0;
 
   AndroidMusicPlatform? get _platform => switch (widget.controller.platform) {
     final AndroidMusicPlatform platform => platform,
@@ -33,7 +35,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   void initState() {
     super.initState();
+    _youtubeRevision = widget.controller.youtubeRevision;
     _collections = _loadCollections();
+    unawaited(widget.controller.refreshYouTubeStatus());
   }
 
   @override
@@ -121,6 +125,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
       final downloadedCount = widget.controller.tracks
           .where((t) => t.isReady)
           .length;
+      if (widget.controller.youtubeRevision != _youtubeRevision) {
+        _youtubeRevision = widget.controller.youtubeRevision;
+        _collections = _loadCollections();
+      }
 
       return Scaffold(
         appBar: AppBar(title: const Text('Hồ sơ của bạn')),
@@ -313,6 +321,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             ],
                           ),
                         ),
+                        if (widget.controller.youtubeStatus.available) ...[
+                          const SizedBox(height: 16),
+                          _YouTubeSyncCard(controller: widget.controller),
+                        ],
                         const SizedBox(height: 24),
 
                         if (snapshot.connectionState != ConnectionState.done)
@@ -442,6 +454,183 @@ class _ProfileScreenState extends State<ProfileScreen> {
       );
     },
   );
+}
+
+class _YouTubeSyncCard extends StatelessWidget {
+  const _YouTubeSyncCard({required this.controller});
+
+  final MusicController controller;
+
+  String _formatSyncedAt(DateTime? dt) {
+    if (dt == null) return 'Chưa đồng bộ lần nào';
+    final local = dt.toLocal();
+    final hh = local.hour.toString().padLeft(2, '0');
+    final mm = local.minute.toString().padLeft(2, '0');
+    final dd = local.day.toString().padLeft(2, '0');
+    final mo = local.month.toString().padLeft(2, '0');
+    return 'Đồng bộ gần nhất: $hh:$mm · $dd/$mo';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final status = controller.youtubeStatus;
+    final light = Theme.of(context).brightness == Brightness.light;
+    final palette = context.palette;
+
+    final String? badgeText = status.needsReconnect
+        ? 'Cần kết nối lại'
+        : status.connected
+        ? 'Đang bật'
+        : null;
+    final Color badgeBg = status.needsReconnect
+        ? (light ? const Color(0xfffff2e5) : const Color(0x33ffb74d))
+        : (light ? const Color(0xffe9f7ef) : const Color(0x2e66bb6a));
+    final Color badgeFg = status.needsReconnect
+        ? (light ? const Color(0xffb25e09) : const Color(0xffffcc80))
+        : (light ? const Color(0xff1e7e45) : const Color(0xff9be7a5));
+
+    return LiquidGlassCard(
+      borderRadius: 20,
+      padding: const EdgeInsets.all(18),
+      gradient: light
+          ? const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Color(0xfffff4f5), Color(0xfff5f3fa)],
+            )
+          : const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Color(0xe62d1822), Color(0xe6191927)],
+            ),
+      borderColor: light ? const Color(0x4dd6455d) : const Color(0x4dff5c70),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              const Icon(
+                Icons.play_circle_filled_rounded,
+                color: Color(0xffff5c70),
+                size: 22,
+              ),
+              const SizedBox(width: 9),
+              Expanded(
+                child: Text(
+                  'Kết nối YouTube',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: palette.text,
+                  ),
+                ),
+              ),
+              if (badgeText != null)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 9,
+                    vertical: 3,
+                  ),
+                  decoration: BoxDecoration(
+                    color: badgeBg,
+                    borderRadius: BorderRadius.circular(99),
+                  ),
+                  child: Text(
+                    badgeText,
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: badgeFg,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          if (status.needsReconnect) ...[
+            Text(
+              'Phiên đồng bộ YouTube đã hết hạn sau 7 ngày. Kết nối lại để cập nhật Nhạc đã thích và playlist YouTube.',
+              style: TextStyle(fontSize: 12.5, color: palette.muted),
+            ),
+            const SizedBox(height: 14),
+            FilledButton.icon(
+              style: playButtonStyle(context),
+              onPressed: controller.syncingYouTube
+                  ? null
+                  : () => controller.connectYouTube(),
+              icon: const Icon(Icons.refresh_rounded, size: 18),
+              label: const Text('Kết nối lại YouTube'),
+            ),
+          ] else if (status.connected) ...[
+            Text(
+              '${_formatSyncedAt(status.lastSyncedAt)} · ${status.likedCount} bài đã thích · ${status.playlistCount} playlist',
+              style: TextStyle(fontSize: 12.5, color: palette.muted),
+            ),
+            const SizedBox(height: 14),
+            Wrap(
+              spacing: 10,
+              runSpacing: 8,
+              children: [
+                FilledButton.icon(
+                  style: playButtonStyle(context),
+                  onPressed: controller.syncingYouTube
+                      ? null
+                      : () => controller.syncYouTubeNow(),
+                  icon: const Icon(Icons.sync_rounded, size: 18),
+                  label: Text(
+                    controller.syncingYouTube
+                        ? 'Đang đồng bộ...'
+                        : 'Đồng bộ ngay',
+                  ),
+                ),
+                OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    shape: const StadiumBorder(),
+                    side: BorderSide(
+                      color: light
+                          ? const Color(0x57d6455d)
+                          : const Color(0x57ff5c70),
+                    ),
+                  ),
+                  onPressed: controller.syncingYouTube
+                      ? null
+                      : () => controller.disconnectYouTube(),
+                  icon: const Icon(Icons.link_off_rounded, size: 18),
+                  label: const Text('Ngắt kết nối'),
+                ),
+              ],
+            ),
+          ] else ...[
+            Text(
+              'Đồng bộ Nhạc đã thích, playlist YouTube và gợi ý nghe nhạc cá nhân. Chỉ dùng quyền đọc youtube.readonly, không ảnh hưởng dữ liệu gốc.',
+              style: TextStyle(fontSize: 12.5, color: palette.muted),
+            ),
+            const SizedBox(height: 14),
+            FilledButton.icon(
+              style: playButtonStyle(context),
+              onPressed: controller.syncingYouTube
+                  ? null
+                  : () => controller.connectYouTube(),
+              icon: const Icon(Icons.link_rounded, size: 18),
+              label: const Text('Kết nối tài khoản YouTube'),
+            ),
+          ],
+          if (controller.youtubeError case final error?) ...[
+            const SizedBox(height: 10),
+            Text(
+              error,
+              style: TextStyle(
+                fontSize: 12,
+                color: Theme.of(context).colorScheme.error,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
 }
 
 class _ProfileStatItem extends StatelessWidget {

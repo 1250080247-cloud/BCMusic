@@ -90,6 +90,16 @@ class AndroidMusicPlatform implements MusicPlatform {
 
   Future<String?> getProfileCollections() =>
       _methods.invokeMethod<String>('getProfileCollections');
+  Future<String?> getYouTubeStatus() =>
+      _methods.invokeMethod<String>('getYouTubeStatus');
+  Future<void> startYouTubeConnect() =>
+      _methods.invokeMethod('startYouTubeConnect');
+  Future<String?> syncYouTube() =>
+      _methods.invokeMethod<String>('syncYouTube');
+  Future<String?> disconnectYouTube() =>
+      _methods.invokeMethod<String>('disconnectYouTube');
+  Future<String?> getYouTubeForYou() =>
+      _methods.invokeMethod<String>('getYouTubeForYou');
   Future<List<String>> getFavoriteIds() async =>
       await _methods.invokeListMethod<String>('getFavoriteIds') ?? [];
   Future<void> setFavorite(

@@ -223,6 +223,7 @@ class DiscoveryController extends ChangeNotifier {
   DiscoveryController(this.repository);
   final DiscoveryRepository repository;
   int genreIndex = 0;
+  bool forYouSelected = false;
   List<FeedSection> sections = List.generate(3, (_) => const FeedSection());
   List<DiscoverySong> searchResults = [];
   String query = '';
@@ -230,9 +231,16 @@ class DiscoveryController extends ChangeNotifier {
   bool searching = false, _disposed = false;
   int _feedRequest = 0, _searchRequest = 0;
 
+  void selectForYou() {
+    if (forYouSelected) return;
+    forYouSelected = true;
+    _notify();
+  }
+
   Future<void> selectGenre(int index) async {
     if (index < 0 || index >= musicGenres.length) return;
     final request = ++_feedRequest;
+    forYouSelected = false;
     genreIndex = index;
     sections = List.generate(3, (_) => const FeedSection());
     _notify();

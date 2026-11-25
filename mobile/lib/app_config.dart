@@ -13,7 +13,7 @@ class BCMusicConfig {
 
   /// Phiên bản app đang chạy. Phải khớp với `version` trong pubspec.yaml;
   /// test/config_test.dart kiểm tra điều này.
-  static const String appVersion = '1.3.1';
+  static const String appVersion = '1.3.2';
 
   /// Repo GitHub phát hành APK. Mỗi bản phát hành là một GitHub Release có
   /// tag dạng vX.Y.Z và file .apk đính kèm.

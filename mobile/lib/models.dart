@@ -407,21 +407,66 @@ String deriveTrackId(String url) {
   }
 }
 
+class YouTubeSyncStatus {
+  const YouTubeSyncStatus({
+    this.available = false,
+    this.connected = false,
+    this.needsReconnect = false,
+    this.lastSyncedAt,
+    this.likedCount = 0,
+    this.playlistCount = 0,
+  });
+
+  final bool available;
+  final bool connected;
+  final bool needsReconnect;
+  final DateTime? lastSyncedAt;
+  final int likedCount;
+  final int playlistCount;
+
+  factory YouTubeSyncStatus.fromMap(Map<Object?, Object?> data) {
+    final rawSynced = data['lastSyncedAt'] as String?;
+    return YouTubeSyncStatus(
+      available: data['available'] == true,
+      connected: data['connected'] == true,
+      needsReconnect: data['needsReconnect'] == true,
+      lastSyncedAt: rawSynced != null ? DateTime.tryParse(rawSynced) : null,
+      likedCount: (data['likedCount'] as num?)?.toInt() ?? 0,
+      playlistCount: (data['playlistCount'] as num?)?.toInt() ?? 0,
+    );
+  }
+}
+
 class AccountPlaylist {
-  const AccountPlaylist(this.id, this.name, this.songs);
-  final String id, name;
+  const AccountPlaylist(
+    this.id,
+    this.name,
+    this.songs, {
+    this.source = 'bcmusic',
+    this.isLiked = false,
+  });
+  final String id, name, source;
+  final bool isLiked;
   final Map<String, PlaybackQueueItem> songs;
+
+  bool get isYouTube => source == 'youtube';
 
   static List<AccountPlaylist> readAll(Object? data) => data is List
       ? [
           for (final row in data.whereType<Map>())
             if (row['id'] case final String id when id.isNotEmpty)
-              AccountPlaylist(id, row['name']?.toString() ?? 'Playlist', {
-                if (row['songs'] case final List songs)
-                  for (final song in songs.whereType<Map>())
-                    if (song['id'] case final String songId)
-                      songId: ?readAccountSong(song),
-              }),
+              AccountPlaylist(
+                id,
+                row['name']?.toString() ?? 'Playlist',
+                {
+                  if (row['songs'] case final List songs)
+                    for (final song in songs.whereType<Map>())
+                      if (song['id'] case final String songId)
+                        songId: ?readAccountSong(song),
+                },
+                source: row['source'] == 'youtube' ? 'youtube' : 'bcmusic',
+                isLiked: row['isLiked'] == true,
+              ),
         ]
       : [];
 }

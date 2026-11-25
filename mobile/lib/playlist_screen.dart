@@ -570,6 +570,7 @@ class AccountPlaylistDetail extends StatefulWidget {
 class _AccountPlaylistDetailState extends State<AccountPlaylistDetail> {
   late Map<String, PlaybackQueueItem> _entries;
   final _pending = <String>{};
+  bool _savingOffline = false;
 
   @override
   void initState() {
@@ -577,10 +578,47 @@ class _AccountPlaylistDetailState extends State<AccountPlaylistDetail> {
     _entries = Map.of(widget.playlist.songs);
   }
 
+  Future<void> _saveAsOfflinePlaylist() async {
+    if (_entries.isEmpty || _savingOffline) return;
+    setState(() => _savingOffline = true);
+    try {
+      await widget.controller.saveAccountPlaylistOffline(
+        AccountPlaylist(
+          widget.playlist.id,
+          widget.playlist.name,
+          _entries,
+          source: widget.playlist.source,
+          isLiked: widget.playlist.isLiked,
+        ),
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Đã lưu “${widget.playlist.name}” vào Playlist offline.',
+            ),
+          ),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Chưa lưu được playlist offline. Hãy thử lại.'),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _savingOffline = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final controller = widget.controller;
     final platform = controller.platform;
+    final isYouTube = widget.playlist.isYouTube;
+    final light = Theme.of(context).brightness == Brightness.light;
     final queue = _entries.values.toList();
     final urls = _entries.values.map((s) => s.artworkUrl).toList();
 
@@ -601,26 +639,57 @@ class _AccountPlaylistDetailState extends State<AccountPlaylistDetail> {
                 Container(
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(19),
-                    boxShadow: const [
+                    boxShadow: [
                       BoxShadow(
-                        color: Color(0x389e7db0),
+                        color: isYouTube
+                            ? const Color(0x40ff5c70)
+                            : const Color(0x389e7db0),
                         blurRadius: 45,
-                        offset: Offset(0, 8),
+                        offset: const Offset(0, 8),
                       ),
                     ],
                   ),
                   child: PlaylistArtwork(urls: urls, size: 180),
                 ),
                 const SizedBox(height: 20),
-                const Text(
-                  'YOUR PERSONAL PLAYLIST',
-                  style: TextStyle(
-                    fontSize: 9,
-                    letterSpacing: 1.8,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xff8f84a9),
+                if (isYouTube)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 11,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: light
+                          ? const Color(0xffffeef1)
+                          : const Color(0x2eff5c70),
+                      border: Border.all(
+                        color: light
+                            ? const Color(0x57d6455d)
+                            : const Color(0x66ff6b8b),
+                      ),
+                      borderRadius: BorderRadius.circular(99),
+                    ),
+                    child: Text(
+                      'YouTube · Chỉ đọc',
+                      style: TextStyle(
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w700,
+                        color: light
+                            ? const Color(0xffb8324a)
+                            : const Color(0xffff9aa8),
+                      ),
+                    ),
+                  )
+                else
+                  const Text(
+                    'YOUR PERSONAL PLAYLIST',
+                    style: TextStyle(
+                      fontSize: 9,
+                      letterSpacing: 1.8,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xff8f84a9),
+                    ),
                   ),
-                ),
                 const SizedBox(height: 8),
                 Text(
                   widget.playlist.name,
@@ -633,11 +702,15 @@ class _AccountPlaylistDetailState extends State<AccountPlaylistDetail> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  '${_entries.length} bài',
+                  isYouTube
+                      ? '${_entries.length} bài · YouTube'
+                      : '${_entries.length} bài',
                   textAlign: TextAlign.center,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 12.5,
-                    color: Color(0xffb6a5c4),
+                    color: light
+                        ? context.palette.muted
+                        : const Color(0xffb6a5c4),
                   ),
                 ),
                 const SizedBox(height: 20),
@@ -655,6 +728,8 @@ class _AccountPlaylistDetailState extends State<AccountPlaylistDetail> {
                                 widget.playlist.id,
                                 widget.playlist.name,
                                 _entries,
+                                source: widget.playlist.source,
+                                isLiked: widget.playlist.isLiked,
                               ),
                               shuffle: false,
                             ),
@@ -673,12 +748,37 @@ class _AccountPlaylistDetailState extends State<AccountPlaylistDetail> {
                                 widget.playlist.id,
                                 widget.playlist.name,
                                 _entries,
+                                source: widget.playlist.source,
+                                isLiked: widget.playlist.isLiked,
                               ),
                               shuffle: true,
                             ),
                       icon: const Icon(Icons.shuffle_rounded, size: 18),
                       label: const Text('Trộn bài'),
                     ),
+                    if (isYouTube)
+                      OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(
+                          shape: const StadiumBorder(),
+                          side: BorderSide(
+                            color: light
+                                ? const Color(0x57d6455d)
+                                : const Color(0x57ff5c70),
+                          ),
+                        ),
+                        onPressed: _entries.isEmpty || _savingOffline
+                            ? null
+                            : _saveAsOfflinePlaylist,
+                        icon: const Icon(
+                          Icons.download_for_offline_outlined,
+                          size: 18,
+                        ),
+                        label: Text(
+                          _savingOffline
+                              ? 'Đang lưu...'
+                              : 'Lưu thành Playlist offline',
+                        ),
+                      ),
                   ],
                 ),
               ],
@@ -696,7 +796,7 @@ class _AccountPlaylistDetailState extends State<AccountPlaylistDetail> {
                 title: song.title,
                 artist: song.artist,
                 artworkUrl: song.artworkUrl,
-                inPlaylist: true,
+                inPlaylist: !isYouTube,
                 onSelected: (action) async {
                   if (platform is! AndroidMusicPlatform) return;
                   switch (action) {
@@ -714,6 +814,7 @@ class _AccountPlaylistDetailState extends State<AccountPlaylistDetail> {
                     case TrackAction.info:
                       await showTrackInfo(context, song);
                     case TrackAction.remove:
+                      if (isYouTube) return;
                       if (!_pending.add(songId)) return;
                       try {
                         await platform.removeWebPlaylistSong(
@@ -762,12 +863,48 @@ class AccountPlaylistTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final light = Theme.of(context).brightness == Brightness.light;
+    final isYouTube = playlist.isYouTube;
+    final isLiked = isYouTube && playlist.isLiked;
     if (cardWidth case final width?) {
+      final Gradient? cardGradient = isLiked
+          ? LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: light
+                  ? const [Color(0xfffff1f4), Color(0xfff6eefa)]
+                  : const [Color(0xff40182a), Color(0xff20182e)],
+            )
+          : isYouTube
+          ? LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: light
+                  ? const [Color(0xfffff4f5), Color(0xfff5f3fa)]
+                  : const [Color(0xff341922), Color(0xff191927)],
+            )
+          : null;
+      final Color? cardBorderColor = isLiked
+          ? const Color(0x6bff6b8b)
+          : isYouTube
+          ? const Color(0x57ff5c70)
+          : null;
+      final String? sourceBadge = isLiked
+          ? '♥ YouTube'
+          : isYouTube
+          ? '▶ YouTube'
+          : null;
       return _PlaylistCard(
         name: playlist.name,
         count: playlist.songs.length,
         offline: false,
         width: width,
+        cardGradient: cardGradient,
+        cardBorderColor: cardBorderColor,
+        sourceBadge: sourceBadge,
+        subtitleOverride: isYouTube
+            ? '${playlist.songs.length} bài · YouTube'
+            : null,
         artwork: PlaylistArtwork(
           urls: playlist.songs.values.map((song) => song.artworkUrl).toList(),
           size: width - 22,
@@ -780,12 +917,20 @@ class AccountPlaylistTile extends StatelessWidget {
     }
     return ListTile(
       contentPadding: EdgeInsets.zero,
-      leading: const Icon(
-        Icons.queue_music_rounded,
-        color: Color(0xffc2abf3),
+      leading: Icon(
+        isLiked
+            ? Icons.favorite_rounded
+            : isYouTube
+            ? Icons.play_circle_outline_rounded
+            : Icons.queue_music_rounded,
+        color: isYouTube ? const Color(0xffff6b8b) : const Color(0xffc2abf3),
       ),
       title: Text(playlist.name),
-      subtitle: Text('${playlist.songs.length} bài'),
+      subtitle: Text(
+        isYouTube
+            ? '${playlist.songs.length} bài · YouTube'
+            : '${playlist.songs.length} bài',
+      ),
       trailing: const Icon(Icons.chevron_right_rounded),
       onTap: () => _open(context),
     );
@@ -822,17 +967,23 @@ class PlaylistScreen extends StatefulWidget {
 class _PlaylistScreenState extends State<PlaylistScreen> {
   Future<Map<String, dynamic>>? _collections;
   String? _accountKey;
+  int _youtubeRevision = 0;
 
   @override
   void initState() {
     super.initState();
+    _youtubeRevision = widget.controller.youtubeRevision;
     _updateAccount();
   }
 
   @override
   void didUpdateWidget(covariant PlaylistScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
-    _updateAccount(reopened: widget.active && !oldWidget.active);
+    final ytChanged = widget.controller.youtubeRevision != _youtubeRevision;
+    if (ytChanged) {
+      _youtubeRevision = widget.controller.youtubeRevision;
+    }
+    _updateAccount(reopened: (widget.active && !oldWidget.active) || ytChanged);
   }
 
   void _updateAccount({bool reopened = false}) {
@@ -896,7 +1047,12 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
           onRetry: _refreshAccount,
         );
       }
-      final playlists = AccountPlaylist.readAll(snapshot.data?['playlists']);
+      final rawPlaylists = AccountPlaylist.readAll(snapshot.data?['playlists']);
+      final playlists = [
+        ...rawPlaylists.where((p) => p.isYouTube && p.isLiked),
+        ...rawPlaylists.where((p) => p.isYouTube && !p.isLiked),
+        ...rawPlaylists.where((p) => !p.isYouTube),
+      ];
       return _playlistGrid(
         playlists.length + 1,
         (index, width) {
@@ -957,17 +1113,51 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
               if (_collections != null) ...[
                 Row(
                   children: [
-                    const Expanded(
+                    Flexible(
                       child: Text(
                         'Playlist tài khoản',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
+                        style: const TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.w700,
                         ),
                       ),
                     ),
+                    if (controller.youtubeStatus.connected) ...[
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 2.5,
+                        ),
+                        decoration: BoxDecoration(
+                          color:
+                              Theme.of(context).brightness == Brightness.light
+                              ? const Color(0xffffeef1)
+                              : const Color(0x2eff5c70),
+                          border: Border.all(
+                            color:
+                                Theme.of(context).brightness == Brightness.light
+                                ? const Color(0x57d6455d)
+                                : const Color(0x57ff5c70),
+                          ),
+                          borderRadius: BorderRadius.circular(99),
+                        ),
+                        child: Text(
+                          '+ YouTube',
+                          style: TextStyle(
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.w700,
+                            color:
+                                Theme.of(context).brightness == Brightness.light
+                                ? const Color(0xffb8324a)
+                                : const Color(0xffff9aa8),
+                          ),
+                        ),
+                      ),
+                    ],
+                    const Spacer(),
                     IconButton(
                       tooltip: 'Làm mới playlist tài khoản',
                       onPressed: _refreshAccount,
@@ -1079,6 +1269,10 @@ class _PlaylistCard extends StatelessWidget {
     required this.onTap,
     this.offline = true,
     this.onPlay,
+    this.cardGradient,
+    this.cardBorderColor,
+    this.sourceBadge,
+    this.subtitleOverride,
   });
   final String name;
   final int count;
@@ -1087,62 +1281,114 @@ class _PlaylistCard extends StatelessWidget {
   final VoidCallback onTap;
   final bool offline;
   final VoidCallback? onPlay;
+  final Gradient? cardGradient;
+  final Color? cardBorderColor;
+  final String? sourceBadge;
+  final String? subtitleOverride;
 
   @override
-  Widget build(BuildContext context) => SizedBox(
-    width: width,
-    child: LiquidGlassCard(
-      borderRadius: 16,
-      padding: const EdgeInsets.all(11),
-      onTap: onTap,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Stack(
-            children: [
-              artwork,
-              if (onPlay != null && count > 0)
-                Positioned(
-                  right: 8,
-                  bottom: 8,
-                  child: GestureDetector(
-                    onTap: onPlay,
+  Widget build(BuildContext context) {
+    final light = Theme.of(context).brightness == Brightness.light;
+    final palette = context.palette;
+    return SizedBox(
+      width: width,
+      child: LiquidGlassCard(
+        borderRadius: 16,
+        padding: const EdgeInsets.all(11),
+        gradient: cardGradient ?? (light ? palette.surfaceGradient : null),
+        borderColor: cardBorderColor ?? (light ? palette.border : null),
+        onTap: onTap,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Stack(
+              children: [
+                artwork,
+                if (sourceBadge != null)
+                  Positioned(
+                    left: 8,
+                    top: 8,
                     child: Container(
-                      width: 34,
-                      height: 34,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: const Color(0x45ffffff),
-                        border: Border.all(color: const Color(0x66ffffff)),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 3,
                       ),
-                      child: const Icon(
-                        Icons.play_arrow_rounded,
-                        size: 20,
-                        color: Colors.white,
+                      decoration: BoxDecoration(
+                        color: light
+                            ? const Color(0xe6ffffff)
+                            : const Color(0xc71a0e18),
+                        border: Border.all(
+                          color: light
+                              ? const Color(0x66d6455d)
+                              : const Color(0x7aff6b8b),
+                        ),
+                        borderRadius: BorderRadius.circular(99),
+                      ),
+                      child: Text(
+                        sourceBadge!,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                          color: light
+                              ? const Color(0xffb8324a)
+                              : const Color(0xffffb3c1),
+                        ),
                       ),
                     ),
                   ),
-                ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Text(
-            name,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            '$count bài hát · ${offline ? "Trên thiết bị" : "Tài khoản"}',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontSize: 11, color: Color(0xff8c839a)),
-          ),
-        ],
+                if (onPlay != null && count > 0)
+                  Positioned(
+                    right: 8,
+                    bottom: 8,
+                    child: GestureDetector(
+                      onTap: onPlay,
+                      child: Container(
+                        width: 34,
+                        height: 34,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: const Color(0x45ffffff),
+                          border: Border.all(color: const Color(0x66ffffff)),
+                        ),
+                        child: const Icon(
+                          Icons.play_arrow_rounded,
+                          size: 20,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Text(
+              name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 13.5,
+                fontWeight: FontWeight.w700,
+                color: palette.text,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              subtitleOverride ??
+                  '$count bài hát · ${offline ? "Trên thiết bị" : "Tài khoản"}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 11,
+                color: light ? palette.muted : const Color(0xff8c839a),
+              ),
+            ),
+          ],
+        ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 /// Thẻ tạo Playlist mới (.playlist-create trong App.tsx)
